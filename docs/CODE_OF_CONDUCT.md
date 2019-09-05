@@ -1,0 +1,1 @@
+Away with this SJW bullshit.
