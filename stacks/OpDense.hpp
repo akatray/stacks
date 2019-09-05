@@ -153,7 +153,7 @@ namespace sx
 
 			_Stream.write(reinterpret_cast<const char*>(&Flags), sizeof(Flags));
 			_Stream.write(reinterpret_cast<const char*>(&this->ShpIn), sizeof(this->ShpIn));
-			_Stream.write(reinterpret_cast<const char*>(&this->ShpOut), sizeof(&this->ShpOut));
+			_Stream.write(reinterpret_cast<const char*>(&this->ShpOut), sizeof(this->ShpOut));
 			
 			for(auto o = u64(0); o < this->ShpOut.size(); ++o)
 			{
