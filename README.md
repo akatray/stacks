@@ -1,14 +1,14 @@
 ## stacks
 Neural network implementation in C++.
 
-### Current operations:
-* __Dense:__ Most basic operation. Every output takes in every input.
-* __Local2:__ Dense and conv2 mix. Input and output are 3d objects [width] [height] [depth]. Every output takes in input in the same position and surrounding neighbours. Input and output can be in different width and height dimensions, but must be same in depth dimension. If input is smaller than the output, same input will be reused for close by outputs. If input is bigger than the output, closeby inputs will be skipped.
+### On multithreading.
+After some testing I am on the assumption that dense operation is already memory bound.
+Therefore, it's not planned until someone proves that this assumption is wrong or other
+type of operation would benefit from it.
 
-### On multithreading:
-* Dense is currently memory bound on my computer. (I only have one memory stick. Effectively halving bandwidth.)
-* Local2 need testing.
+* Dividing fit() function in fragments and executing them in N threads will result in performance divided by N.
+* Running the same model on two different threads divides performance in half or more.
+* Running two programs that run same model will half performance.
 
-### Future plans:
-* Conv2 - Maybe. Local2 in theory should be better for what I need. And scales good compared to Dense, which after 128x128 can't even fit in ram nor will be trained in this millennium.
-* Maxpool2 - Necessity for Conv2.
+### Future plans.
+* Convoliution operation: Somewhat hard to implement when I don't have math education to understand wtf I am doing.
