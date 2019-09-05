@@ -7,11 +7,11 @@
 // Imports.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #include <fx/Types.hpp>
-#include <fx/Math.hpp>
+#include <fx/Utilities.hpp>
 #include <iostream>
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Stacks.
+// Stacks namespace.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 namespace sx
 {
@@ -21,13 +21,13 @@ namespace sx
 	using namespace fx;
 	
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Operation identifiers.
+	// Operation flags.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	enum class OpId
-	{
-		NONE,
-		DENSE
-	};
+	constexpr auto OpFlagTraitUtl = u32(0b00000000000000000000000000000001); // Utlility opration.
+	constexpr auto OpFlagTraitReal = u32(0b00000000000000000000000000000010); // Real operation that does work.
+	constexpr auto OpFlagCustomId = u32(0xA0000000); // Id for custom operation.
+	constexpr auto OpFlagNullId = u32(0x00000000);
+	constexpr auto OpFlagNullVer = u32(0x00000200);
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Stack operation interface.
@@ -41,22 +41,21 @@ namespace sx
 		
 		Op* Last;
 		Op* Next;
-		const math::Shape ShpIn;
-		const math::Shape ShpOut;
+		const utl::Shape ShpIn;
+		const utl::Shape ShpOut;
 		const r32* Input;
-		r32* Output;
 
 		public:
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Default constructor.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		Op ( void ) : Next(nullptr), Last(nullptr), ShpIn(), ShpOut(), Input(nullptr), Output(nullptr) {}
+		Op ( void ) : Next(nullptr), Last(nullptr), ShpIn(), ShpOut(), Input(nullptr) {}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Explicit constructor.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		Op ( const math::Shape& _ShpIn, const math::Shape& _ShpOut ) : Last(nullptr), Next(nullptr), ShpIn(_ShpIn), ShpOut(_ShpOut), Input(nullptr), Output(nullptr) {}
+		Op ( const utl::Shape& _ShpIn, const utl::Shape& _ShpOut ) : Last(nullptr), Next(nullptr), ShpIn(_ShpIn), ShpOut(_ShpOut), Input(nullptr) {}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Virtual destructor.
@@ -66,17 +65,14 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Trivial Set/Get functions.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		constexpr inline auto shpin ( void ) const -> const math::Shape& { return this->ShpIn; }
-		constexpr inline auto shpout ( void ) const -> const math::Shape& { return this->ShpOut; }
+		virtual auto flags ( void ) const -> u32 { return (OpFlagNullId | OpFlagNullVer | OpFlagTraitUtl); }
+		constexpr inline auto shpin ( void ) const -> const utl::Shape& { return this->ShpIn; }
+		constexpr inline auto shpout ( void ) const -> const utl::Shape& { return this->ShpOut; }
 		inline auto input ( void ) const -> const r32* { return this->Input; }
-		inline auto output ( void ) const -> r32* { return this->Output; }
-		inline auto setLast ( Op* _Last ) -> void { this->Last = _Last; }
-		inline auto setNext ( Op* _Next ) -> void { this->Next = _Next; }
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Identify operation.
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		virtual auto id ( void ) const -> OpId { return OpId::NONE; }
+		virtual auto output ( void ) -> r32* { return nullptr; }
+		virtual auto gradient ( void ) const -> const r32* { return nullptr; }
+		virtual auto setLast ( Op* _Last ) -> void { this->Last = _Last; if(_Last) { this->Input = _Last->output(); _Last->setNext(this); } }
+		virtual auto setNext ( Op* _Next ) -> void { this->Next = _Next; }
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Execute stack for input. Returns pointer to output buffer. Buffer belongs to last operation.
