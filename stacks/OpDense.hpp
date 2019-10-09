@@ -9,6 +9,7 @@
 #include <stacks/Op.hpp>
 #include <fx/Buffer.hpp>
 #include <fx/Rng.hpp>
+
 #include <fx/Simd.hpp>
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -50,11 +51,11 @@ namespace sx
 			this->Gradient.resize(this->ShpIn.size(), simd::AllocSimd);
 
 			this->Weights.resize(this->ShpOut.size(), simd::AllocSimd);
-			for(auto o = u64(0); o < this->ShpOut.size(); ++o) {this->Weights[o].resize(this->ShpIn.size(), simd::AllocSimd); rngBuffer(this->Weights[o](), this->Weights[o].size(), _IntMin, _IntMax);}
+			for(auto o = u64(0); o < this->ShpOut.size(); ++o) {this->Weights[o].resize(this->ShpIn.size(), simd::AllocSimd); rng::rbuf(this->Weights[o](), this->Weights[o].size(), _IntMin, _IntMax);}
 			this->WeightsDlt.resize(this->ShpOut.size(), simd::AllocSimd);
 			for(auto o = u64(0); o < this->ShpOut.size(); ++o) this->WeightsDlt[o].resize(this->ShpIn.size(), simd::AllocSimd);
 
-			this->Biases.resize(this->ShpOut.size(), simd::AllocSimd); rngBuffer(this->Biases(), this->Biases.size(), _IntMin, _IntMax);
+			this->Biases.resize(this->ShpOut.size(), simd::AllocSimd); rng::rbuf(this->Biases(), this->Biases.size(), _IntMin, _IntMax);
 			this->BiasesDlt.resize(this->ShpOut.size(), simd::AllocSimd);
 		}
 
@@ -87,7 +88,7 @@ namespace sx
 				if(this->Trans == Func::SIGMOID) this->OutTrans[o] = math::sigmoid(Sum);
 				else if(this->Trans == Func::TANH) this->OutTrans[o] = math::tanh(Sum);
 				else if(this->Trans == Func::RELU) this->OutTrans[o] = math::relu(Sum);
-				else if(this->Trans == Func::PRELU) this->OutTrans[o] = math::prelu(Sum);
+				else if(this->Trans == Func::PRELU) this->OutTrans[o] = math::crelu(Sum);
 			}
 
 			if(this->Back) this->Input = InputCopy;
@@ -114,7 +115,7 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Fit target.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto fit ( const r32* _Target, const u64 _Depth = 0 ) -> void final
+		auto fit ( const r32* _Target, const r32* _Mask = nullptr ) -> void final
 		{
 			for(auto o = u64(0); o < this->ShpOut.size(); ++o)
 			{
@@ -127,14 +128,14 @@ namespace sx
 				if(this->Trans == Func::SIGMOID) DerIn = math::sigmoidDer2(this->OutTrans[o]) * DerOut;
 				if(this->Trans == Func::TANH) DerIn = math::tanhDer2(this->OutTrans[o]) * DerOut;
 				if(this->Trans == Func::RELU) DerIn = math::reluDer(this->OutReal[o]) * DerOut;
-				if(this->Trans == Func::PRELU) DerIn = math::preluDer(this->OutReal[o]) * DerOut;
+				if(this->Trans == Func::PRELU) DerIn = math::creluDer(this->OutReal[o]) * DerOut;
 
 				simd::mulVecByConstAddToOut(this->ShpIn.size(), this->Gradient(), this->Weights[o](), DerIn);
 				if(!this->IsLocked) simd::mulVecByConstAddToOut(this->ShpIn.size(), this->WeightsDlt[o](), this->Input, DerIn);
 				if(!this->IsLocked) this->BiasesDlt[o] += DerIn;
 			}
 
-			if(this->Back) this->Back->fit(nullptr, _Depth + 1);
+			if(this->Back) this->Back->fit(nullptr, nullptr);
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------

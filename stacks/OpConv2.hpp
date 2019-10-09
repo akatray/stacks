@@ -10,8 +10,6 @@
 #include <fx/Buffer.hpp>
 #include <fx/Rng.hpp>
 #include <fx/Simd.hpp>
-#include <type_traits>
-#include <sstream>
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Stacks namespace.
@@ -24,108 +22,133 @@ namespace sx
 	using namespace fx;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Operation flags.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	//constexpr auto OpFlagLocal2Id = u32(0xC0000000);
+	//constexpr auto OpFlagLocal2Ver = u32(0x00000200);
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Local dense network 2D.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	template<Op::Func F, u64 R, u64 IW, u64 IH, u64 OW, u64 OH> class OpLocal2 : public Op
+	class OpConv2 : public Op
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Members.
+		// Data.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		Func Trans;
 		u64 KerRadius;
 		u64 KerArea;
+		u64 KerCount;
 		Buffer<r32> OutTrans;
 		Buffer<r32> OutReal;
 		Buffer<r32> Gradient;
-		Buffer<Buffer<r32>> Weights;
-		Buffer<Buffer<r32>> WeightsDlt;
+		Buffer<Buffer<Buffer<r64>>> Weights;
+		Buffer<Buffer<Buffer<r64>>> WeightsDlt;
 		
 		public:
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Explicit constructor.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		OpLocal2 ( r32 _IntMin = 0.001f, r32 _IntMax = 0.002f ) : Op(utl::Shape(IW, IH), utl::Shape(OW, OH))
+		OpConv2 ( const utl::Shape& _ShpIn, const utl::Shape& _ShpOut, const u64 _Radius, const Func _Trans = Func::PRELU, r32 _IntMin = 0.001f, r32 _IntMax = 0.002f ) : Op(_ShpIn, _ShpOut)
 		{
-			this->KerRadius = R;
-			this->KerArea = ((R * 2) + 1) * ((R * 2) + 1);
+			this->Trans = _Trans;
+			this->KerRadius = _Radius;
+			this->KerArea = (((_Radius * 2) + 1) * ((_Radius * 2) + 1));
+			this->KerCount = this->ShpOut[2];
 
 			this->OutTrans.resize(this->ShpOut.size(), simd::AllocSimd);
-			if constexpr((F == Func::RELU) || (F == Func::PRELU)) this->OutReal.resize(this->ShpOut.size(), simd::AllocSimd);
+			if((_Trans == Func::RELU) || (_Trans == Func::PRELU)) this->OutReal.resize(this->ShpOut.size(), simd::AllocSimd);
 			this->Gradient.resize(this->ShpIn.size(), simd::AllocSimd);
 
-			this->Weights.resize(this->ShpOut.size(), simd::AllocSimd);
-			for(auto o = u64(0); o < this->ShpOut.size(); ++o) {this->Weights[o].resize(this->KerArea, simd::AllocSimd); rng::rbuf(this->Weights[o](), this->Weights[o].size(), _IntMin, _IntMax);}
-			this->WeightsDlt.resize(this->ShpOut.size(), simd::AllocSimd);
-			for(auto o = u64(0); o < this->ShpOut.size(); ++o) this->WeightsDlt[o].resize(this->KerArea, simd::AllocSimd);
+			this->Weights.resize(this->KerCount, simd::AllocSimd);
+			this->WeightsDlt.resize(this->KerCount, simd::AllocSimd);
+			
+			for(auto k = u64(0); k < this->KerCount; ++k)
+			{
+				this->Weights[k].resize(this->ShpIn[2], simd::AllocSimd);
+				this->WeightsDlt[k].resize(this->ShpIn[2], simd::AllocSimd);
+
+				for(auto d = u64(0); d < this->ShpIn[2]; ++d)
+				{
+					this->Weights[k][d].resize(this->KerArea, simd::AllocSimd);
+					this->WeightsDlt[k][d].resize(this->KerArea, simd::AllocSimd);
+
+					rng::rbuf<r64>(this->Weights[k][d](), this->Weights[k][d].size(), _IntMin, _IntMax);
+				}
+			}
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Virtual destructor.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		~OpLocal2 ( void ) final {}
+		~OpConv2 ( void ) final {}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Trivial functions.
+		// Trivial Set/Get functions.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto id ( void ) const -> u64 final { return 2000; }
+		auto id ( void ) const -> u64 final { return 3000; }
 		auto output ( void ) -> r32* final { return this->OutTrans(); }
 		auto gradient ( void ) const -> const r32* final { return this->Gradient(); }
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Execute operation.
+		// Execute stack for input. Returns pointer to output buffer. Buffer belongs to last operation.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto execute ( const r32* _Input ) -> r32* final
 		{
 			auto InputCopy = this->Input;
 			if(_Input) this->Input = _Input;
+
+
+			const auto RdxMin = -i64(this->KerRadius);
+			const auto RdxMax = i64(this->KerRadius + 1);
+
+			auto sox = r32(1.0f);
+			if(this->ShpIn[0] > this->ShpOut[0]) sox = r32(this->ShpOut[0]) / this->ShpIn[0];
 			
+			auto six = r32(1.0f);
+			if(this->ShpIn[0] < this->ShpOut[0]) six = r32(this->ShpIn[0]) / this->ShpOut[0];
 
-			constexpr auto RdxMin = -i64(R);
-			constexpr auto RdxMax = i64(R + 1);
-
-			constexpr auto init_sox = []() -> auto { if constexpr(IW > OW) return r32(OW) / IW; else return r32(1.0f); };
-			constexpr auto sox = init_sox();
-
-			constexpr auto init_six = []() -> auto { if constexpr(IW < OW) return r32(IW) / OW; else return r32(1.0f); };
-			constexpr auto six = init_six();
-
-			constexpr auto init_soy = []() -> auto { if constexpr(IH > OH) return r32(OH) / IH; else return r32(1.0f); };
-			constexpr auto soy = init_soy();
-
-			constexpr auto init_siy = []() -> auto { if constexpr(IH < OH) return r32(IH) / OH; else return r32(1.0f); };
-			constexpr auto siy = init_siy();
+			auto soy = r32(1.0f);
+			if(this->ShpIn[1] > this->ShpOut[1]) soy = r32(this->ShpOut[1]) / this->ShpIn[1];
+		
+			auto siy = r32(1.0f);
+			if(this->ShpIn[1] < this->ShpOut[1]) siy = r32(this->ShpIn[1]) / this->ShpOut[1];
 			
-			auto ox = r32(0.0f);
-			auto oy = r32(0.0f);
 			
-			for(auto iy = r32(0.0f); iy < r32(IH); iy += siy) { for(auto ix = r32(0.0f); ix < r32(IW); ix += six)
+			for(auto k = u64(0); k < this->KerCount; ++k)
 			{
-				auto Sum = r64(0.0f);
-				auto w = u64(0);
-				const auto o = math::index(u64(ox), u64(oy), OH);
-
-				for(auto ky = RdxMin; ky != RdxMax; ++ky) { for(auto kx = RdxMin; kx != RdxMax; ++kx)
+				auto ox = r32(0.0f);
+				auto oy = r32(0.0f);
+				
+				for(auto iy = r32(0.0f); iy < this->ShpIn[1]; iy += siy) { for(auto ix = r32(0.0f); ix < this->ShpIn[0]; ix += six)
 				{
-					const auto px = i64(ix + kx);
-					const auto py = i64(iy + ky);
-					
-					if(this->ShpIn.isInside(px, py))
+					auto Sum = r64(0.0f);
+					auto w = u64(0);
+
+					for(auto ky = RdxMin; ky != RdxMax; ++ky) { for(auto kx = RdxMin; kx != RdxMax; ++kx)
 					{
-						Sum += this->Input[this->ShpIn.idx(px, py)] * this->Weights[o][w];
-					}
+						if(this->ShpIn.isInside(i64(ix + kx), i64(iy + ky)))
+						{
+							for(auto d = u64(0); d < this->ShpIn[2]; ++d)
+							{
+								Sum += this->Input[this->ShpIn.idx(u64(ix + kx), u64(iy + ky), d)] * this->Weights[k][d][w];
+							}
+						}
 
-					++w;
+						++w;
+					}}
+
+					if(this->Trans == Func::SIGMOID) this->OutTrans[this->ShpOut.idx(u64(ox), u64(oy), k)] = math::sigmoid(Sum);
+					if(this->Trans == Func::TANH) this->OutTrans[this->ShpOut.idx(u64(ox), u64(oy), k)] = math::tanh(Sum);
+					if(this->Trans == Func::RELU) this->OutTrans[this->ShpOut.idx(u64(ox), u64(oy), k)] = math::relu(Sum);
+					if(this->Trans == Func::PRELU) this->OutTrans[this->ShpOut.idx(u64(ox), u64(oy), k)] = math::crelu(Sum, 0.2f);
+
+					if((this->Trans == Func::RELU) || (this->Trans == Func::PRELU)) this->OutReal[this->ShpOut.idx(u64(ox), u64(oy), k)] = Sum;
+
+					ox += sox; if(ox >= this->ShpOut[0]) { ox = 0.0f; oy += soy; }
 				}}
-
-				if constexpr(F == Func::SIGMOID) this->OutTrans[o] = math::sigmoid(Sum);
-				if constexpr(F == Func::TANH) this->OutTrans[o] = math::tanh(Sum);
-				if constexpr(F == Func::RELU) this->OutTrans[o] = math::relu(Sum);
-				if constexpr(F == Func::PRELU) this->OutTrans[o] = math::prelu(Sum, 0.2f);
-
-				if constexpr((F == Func::RELU) || (F == Func::PRELU)) this->OutReal[o] = Sum;
-
-				ox += sox; if(ox >= this->ShpOut[0]) { ox = 0.0f; oy += soy; }
-			}}
+			}
 
 
 			if(this->Back) this->Input = InputCopy;
@@ -134,92 +157,109 @@ namespace sx
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Reset deltas.
+		// Setup stack for fit().
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto reset ( void ) -> void final
+		virtual auto reset ( void ) -> void
 		{
-			if(!this->IsLocked) for(auto o = u64(0); o < this->ShpOut.size(); ++o) this->WeightsDlt[o].clear();
+			if(!this->IsLocked)
+			{
+				for(auto f = u64(0); f < this->KerCount; ++f)
+				{
+					for(auto d = u64(0); d < this->ShpIn[2]; ++d)
+					{
+						this->WeightsDlt[f][d].clear();
+					}
+				}
+			}
+
 			this->Gradient.clear();
 
 			if(this->Front) this->Front->reset();
 		}
 		
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Fit target.
+		// Back propagate target through stack. Needs to have input executed first.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto fit ( const r32* _Target, const r32* _Mask = nullptr ) -> void final
 		{
-			constexpr auto RdxMin = -i64(R);
-			constexpr auto RdxMax = i64(R + 1);
+			const auto RdxMin = -i64(this->KerRadius);
+			const auto RdxMax = i64(this->KerRadius + 1);
 
-			constexpr auto init_sox = []() -> auto { if constexpr(IW > OW) return r32(OW) / IW; else return r32(1.0f); };
-			constexpr auto sox = init_sox();
-
-			constexpr auto init_six = []() -> auto { if constexpr(IW < OW) return r32(IW) / OW; else return r32(1.0f); };
-			constexpr auto six = init_six();
-
-			constexpr auto init_soy = []() -> auto { if constexpr(IH > OH) return r32(OH) / IH; else return r32(1.0f); };
-			constexpr auto soy = init_soy();
-
-			constexpr auto init_siy = []() -> auto { if constexpr(IH < OH) return r32(IH) / OH; else return r32(1.0f); };
-			constexpr auto siy = init_siy();
+			auto sox = r32(1.0f);
+			if(this->ShpIn[0] > this->ShpOut[0]) sox = r32(this->ShpOut[0]) / this->ShpIn[0];
 			
-			auto ox = r32(0.0f);
-			auto oy = r32(0.0f);
-			
+			auto six = r32(1.0f);
+			if(this->ShpIn[0] < this->ShpOut[0]) six = r32(this->ShpIn[0]) / this->ShpOut[0];
 
-			for(auto iy = r32(0.0f); iy < r32(IH); iy += siy) { for(auto ix = r32(0.0f); ix < r32(IW); ix += six)
+			auto soy = r32(1.0f);
+			if(this->ShpIn[1] > this->ShpOut[1]) soy = r32(this->ShpOut[1]) / this->ShpIn[1];
+		
+			auto siy = r32(1.0f);
+			if(this->ShpIn[1] < this->ShpOut[1]) siy = r32(this->ShpIn[1]) / this->ShpOut[1];
+			
+			
+			for(auto k = u64(0); k < this->KerCount; ++k)
 			{
-				const auto o = this->ShpOut.idx(u64(ox), u64(oy));
-					
-				auto w = u64(0);
-					
-				auto DerOut = r32(0.0f);
-				if(this->Front) DerOut = this->Front->gradient()[o];
-				else DerOut = (this->OutTrans[o] - _Target[o]);
-
-				auto DerIn = r32(0.0f);
-				if constexpr(F == Func::SIGMOID) DerIn = math::sigmoidDer2(this->OutTrans[o]) * DerOut;
-				if constexpr(F == Func::TANH) DerIn = math::tanhDer2(this->OutTrans[o]) * DerOut;
-				if constexpr(F == Func::RELU) DerIn = math::reluDer(this->OutReal[o]) * DerOut;
-				if constexpr(F == Func::PRELU) DerIn = math::preluDer(this->OutReal[o], 0.2f) * DerOut;
-
-				for(auto ky = RdxMin; ky != RdxMax; ++ky) { for(auto kx = RdxMin; kx != RdxMax; ++kx)
+				auto ox = r32(0.0f);
+				auto oy = r32(0.0f);
+				
+				for(auto iy = r32(0.0f); iy < this->ShpIn[1]; iy += siy) { for(auto ix = r32(0.0f); ix < this->ShpIn[0]; ix += six)
 				{
-					const auto px = i64(ix + kx);
-					const auto py = i64(iy + ky);
+					const auto o = this->ShpOut.idx(u64(ox), u64(oy), k);
+					
+					auto w = u64(0);
+					
+					auto DerOut = r32(0.0f);
+					if(this->Front) DerOut = this->Front->gradient()[o];
+					else DerOut = (this->OutTrans[o] - _Target[o]);
 
-					if(this->ShpIn.isInside(px, py))
+					auto DerIn = r32(0.0f);
+					if(this->Trans == Func::SIGMOID) DerIn = math::sigmoidDer2(this->OutTrans[o]) * DerOut;
+					if(this->Trans == Func::TANH) DerIn = math::tanhDer2(this->OutTrans[o]) * DerOut;
+					if(this->Trans == Func::RELU) DerIn = math::reluDer(this->OutReal[o]) * DerOut;
+					if(this->Trans == Func::PRELU) DerIn = math::creluDer(this->OutReal[o], 0.2f) * DerOut;
+
+					DerIn *= (sox * soy) / (this->KerArea * this->KerCount);
+
+					for(auto ky = RdxMin; ky != RdxMax; ++ky) { for(auto kx = RdxMin; kx != RdxMax; ++kx)
 					{
-						if(!this->IsLocked) this->WeightsDlt[o][w] += (this->Input[this->ShpIn.idx(px, py)] * DerIn);
-						this->Gradient[o] += this->Weights[o][w] * DerIn;
-					}
+						if(this->ShpIn.isInside(i64(ix + kx), i64(iy + ky)))
+						{
+							for(auto d = u64(0); d < this->ShpIn[2]; ++d)
+							{
+								if(!this->IsLocked) this->WeightsDlt[k][d][w] += (this->Input[this->ShpIn.idx(u64(ix + kx), u64(iy + ky), d)] * DerIn);
+								this->Gradient[this->ShpIn.idx(u64(ix + kx), u64(iy + ky), d)] += this->Weights[k][d][w] * DerIn;
+							}
+						}
 
-					++w;
+						++w;
+					}}
+
+					ox += sox; if(ox >= this->ShpOut[0]) { ox = 0.0f; oy += soy; }
 				}}
-
-				ox += sox; if(ox >= this->ShpOut[0]) { ox = 0.0f; oy += soy; }
-			}}
+			}
 
 
 			if(this->Back) this->Back->fit(nullptr, nullptr);
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Apply deltas.
+		// Apply deltas generated by fit() to stack.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto apply ( const r32 _Rate = 0.01f ) -> void final
 		{
 			if(!this->IsLocked)
 			{
-				auto Rate = _Rate;
-				if constexpr((F == Func::RELU) || (F == Func::PRELU)) Rate *= 0.1f;
+				auto LocalRate = _Rate;// * 0.1f;
 				
-				for(auto o = u64(0); o < this->ShpOut.size(); ++o)
+				for(auto f = u64(0); f < this->KerCount; ++f)
 				{
-					for(auto l = u64(0); l < this->KerArea; ++l)
+					for(auto d = u64(0); d < this->ShpIn[2]; ++d)
 					{
-						this->Weights[o][l] -= this->WeightsDlt[o][l] * Rate;
+						for(auto w = u64(0); w < this->KerArea; ++w)
+						{
+							this->Weights[f][d][w] -= this->WeightsDlt[f][d][w] * LocalRate;
+						}
 					}
 				}
 			}
@@ -228,47 +268,51 @@ namespace sx
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Store operation's structure and weights.
+		// Store stack's weights.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto store ( std::ostream& _Stream ) const -> void final
 		{
-			auto Id = this->id();
+			/*
+			auto Flags = this->flags();
 
-			_Stream.write(reinterpret_cast<const char*>(&Id), sizeof(Id));
-			_Stream.write(reinterpret_cast<const char*>(&this->KerRadius), sizeof(this->KerRadius));
+			_Stream.write(reinterpret_cast<const char*>(&Flags), sizeof(Flags));
+			_Stream.write(reinterpret_cast<const char*>(&this->Radius), sizeof(this->Radius));
 			_Stream.write(reinterpret_cast<const char*>(&this->ShpIn), sizeof(this->ShpIn));
 			_Stream.write(reinterpret_cast<const char*>(&this->ShpOut), sizeof(this->ShpOut));
 			
 			for(auto o = u64(0); o < this->ShpOut.size(); ++o) _Stream.write(this->Weights[o].cast<char>(), this->Weights[o].sizeInBytes());
 
-			if(this->Front) this->Front->store(_Stream);
+			if(this->Next) this->Next->store(_Stream);
+			*/
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Load operation's structure and weights.
+		// Load stack's weights.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto load ( std::istream& _Stream ) -> void final
 		{
-			auto StreamId = u64(0);
-			auto StreamKerRadius = u64(0);
+			/*
+			auto StreamFlags = u32(0);
+			auto StreamRadius = u64(0);
 			auto StreamShpIn = utl::Shape();
 			auto StreamShpOut = utl::Shape();
 			
-			_Stream.read(reinterpret_cast<char*>(&StreamId), sizeof(StreamId));
-			if(this->id() != StreamId) throw Error("sx", "OpLocal2", "load", ERR_LOAD, "Id mismatch!");
+			_Stream.read(reinterpret_cast<char*>(&StreamFlags), sizeof(StreamFlags));
+			if(this->flags() != StreamFlags) throw str("sx->OpLocal2->load(): Flags mismatch!");
 
-			_Stream.read(reinterpret_cast<char*>(&StreamKerRadius), sizeof(StreamKerRadius));
-			if(this->KerRadius != StreamKerRadius) throw Error("sx", "OpLocal2", "load", ERR_LOAD, "Radius mismatch!");
+			_Stream.read(reinterpret_cast<char*>(&StreamRadius), sizeof(StreamRadius));
+			if(this->Radius != StreamRadius) throw str("sx->OpLocal2->load(): Radius mismatch!");
 
 			_Stream.read(reinterpret_cast<char*>(&StreamShpIn), sizeof(StreamShpIn));
-			if(this->ShpIn != StreamShpIn) throw Error("sx", "OpLocal2", "load", ERR_LOAD, "Input shape mismatch!");
+			if(this->ShpIn != StreamShpIn) throw str("sx->OpLocal2->load(): Input shape mismatch!");
 
 			_Stream.read(reinterpret_cast<char*>(&StreamShpOut), sizeof(StreamShpOut));
-			if(this->ShpOut != StreamShpOut) throw Error("sx", "OpLocal2", "load", ERR_LOAD, "Output shape mismatch!");
+			if(this->ShpOut != StreamShpOut) throw str("sx->OpLocal2->load(): Output shape mismatch!");
 			
 			for(auto o = u64(0); o < this->ShpOut.size(); ++o) _Stream.read(this->Weights[o].cast<char>(), this->Weights[o].sizeInBytes());
 
-			if(this->Front) this->Front->load(_Stream);
+			if(this->Next) this->Next->load(_Stream);
+			*/
 		}
 	};
 }

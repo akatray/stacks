@@ -56,15 +56,17 @@ namespace sx
 			return this->front()->execute(_Input);
 		}
 
+
+
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Reset, fit and apply stack.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto fitFull ( const r32* _Target, const r32 _Rate = 0.01f ) -> void
+		auto fitFull ( const r32* _Target, const r32 _Rate = 0.01f, const r32* _Mask = nullptr ) -> void
 		{
 			this->isolate();
 
 			this->front()->reset();
-			this->back()->fit(_Target);
+			this->back()->fit(_Target, _Mask);
 			this->front()->apply(_Rate);
 		}
 
@@ -133,12 +135,12 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto fitFull ( const r32* _Target, const r32 _Rate = 0.01f ) -> void
+		auto fitFull ( const r32* _Target, const r32 _Rate = 0.01f, const r32* _Mask = nullptr ) -> void
 		{
 			this->connect();
 
 			this->opBeg()->reset();
-			this->opEnd()->fit(_Target);
+			this->opEnd()->fit(_Target, _Mask);
 			this->opBeg()->apply(_Rate);
 		}
 	};

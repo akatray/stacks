@@ -50,6 +50,12 @@ namespace sx
 			PRELU
 		};
 
+
+		constexpr static auto FUNC_SIGMOID = u64(1);
+		constexpr static auto FUNC_TANH = u64(2);
+		constexpr static auto FUNC_RELU = u64(3);
+		constexpr static auto FUNC_PRELU = u64(4);
+
 		// Error codes.
 		constexpr static auto ERR_BAD_SHAPE = u64(1);
 		constexpr static auto ERR_LOAD = u64(2);
@@ -77,7 +83,7 @@ namespace sx
 
 		virtual auto execute ( const r32* _Input ) -> r32* { return nullptr; }
 		virtual auto reset ( void ) -> void { return; }
-		virtual auto fit ( const r32* _Target, const u64 _Depth = 0 ) -> void { return; }
+		virtual auto fit ( const r32* _Target, const r32* _Mask = nullptr ) -> void { return; }
 		virtual auto apply ( const r32 _Rate = 0.01f ) -> void { return; }
 		virtual auto store ( std::ostream& _Stream ) const -> void { return; }
 		virtual auto load ( std::istream& _Stream ) -> void { return; }
