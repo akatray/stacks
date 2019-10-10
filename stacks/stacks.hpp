@@ -9,6 +9,5 @@
 #include "./Op.hpp"
 #include "./OpDense.hpp"
 #include "./OpLocal2.hpp"
-#include "./OpConv2.hpp"
+//#include "./OpConv2.hpp"
 #include "./Training.hpp"
-#include "./TrHippo.hpp"

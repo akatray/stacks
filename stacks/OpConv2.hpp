@@ -1,3 +1,6 @@
+// Does not work.
+
+/*
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Pragma.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -272,18 +275,7 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto store ( std::ostream& _Stream ) const -> void final
 		{
-			/*
-			auto Flags = this->flags();
 
-			_Stream.write(reinterpret_cast<const char*>(&Flags), sizeof(Flags));
-			_Stream.write(reinterpret_cast<const char*>(&this->Radius), sizeof(this->Radius));
-			_Stream.write(reinterpret_cast<const char*>(&this->ShpIn), sizeof(this->ShpIn));
-			_Stream.write(reinterpret_cast<const char*>(&this->ShpOut), sizeof(this->ShpOut));
-			
-			for(auto o = u64(0); o < this->ShpOut.size(); ++o) _Stream.write(this->Weights[o].cast<char>(), this->Weights[o].sizeInBytes());
-
-			if(this->Next) this->Next->store(_Stream);
-			*/
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -291,28 +283,8 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto load ( std::istream& _Stream ) -> void final
 		{
-			/*
-			auto StreamFlags = u32(0);
-			auto StreamRadius = u64(0);
-			auto StreamShpIn = utl::Shape();
-			auto StreamShpOut = utl::Shape();
-			
-			_Stream.read(reinterpret_cast<char*>(&StreamFlags), sizeof(StreamFlags));
-			if(this->flags() != StreamFlags) throw str("sx->OpLocal2->load(): Flags mismatch!");
 
-			_Stream.read(reinterpret_cast<char*>(&StreamRadius), sizeof(StreamRadius));
-			if(this->Radius != StreamRadius) throw str("sx->OpLocal2->load(): Radius mismatch!");
-
-			_Stream.read(reinterpret_cast<char*>(&StreamShpIn), sizeof(StreamShpIn));
-			if(this->ShpIn != StreamShpIn) throw str("sx->OpLocal2->load(): Input shape mismatch!");
-
-			_Stream.read(reinterpret_cast<char*>(&StreamShpOut), sizeof(StreamShpOut));
-			if(this->ShpOut != StreamShpOut) throw str("sx->OpLocal2->load(): Output shape mismatch!");
-			
-			for(auto o = u64(0); o < this->ShpOut.size(); ++o) _Stream.read(this->Weights[o].cast<char>(), this->Weights[o].sizeInBytes());
-
-			if(this->Next) this->Next->load(_Stream);
-			*/
 		}
 	};
 }
+*/

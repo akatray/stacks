@@ -7,14 +7,11 @@
 // Imports.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #include <stacks/Op.hpp>
-#include <fx/Buffer.hpp>
-#include <fx/Rng.hpp>
 #include <fx/Simd.hpp>
-#include <type_traits>
-#include <sstream>
+#include <fx/Rng.hpp>
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Stacks namespace.
+// Stacks - Neural Networks Toolkit.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 namespace sx
 {
@@ -24,52 +21,70 @@ namespace sx
 	using namespace fx;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Local dense network 2D.
+	// Local dense operation 2D.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	template<Op::Func F, u64 R, u64 IW, u64 IH, u64 OW, u64 OH> class OpLocal2 : public Op
+	template<Func F, u64 R, u64 IW, u64 IH, u64 OW, u64 OH> class OpLocal2 : public Op
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Members.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		u64 KerRadius;
-		u64 KerArea;
-		Buffer<r32> OutTrans;
-		Buffer<r32> OutReal;
-		Buffer<r32> Gradient;
-		Buffer<Buffer<r32>> Weights;
-		Buffer<Buffer<r32>> WeightsDlt;
-		
+		r32* OutTrans;
+		r32* OutReal;
+		r32* Gradient;
+		r32* Weights;
+		r32* WeightsDlt;
+
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// constexpr magic.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		constexpr static u64 KER_AREA = ((R * 2) + 1) * ((R * 2) + 1);
+		constexpr static i64 KER_RDX_MIN = -i64(R);
+		constexpr static i64 KER_RDX_MAX = i64(R + 1);
+
+		constexpr static auto IN_STEP_X = r32(IW-R*2) / OW;
+		constexpr static auto IN_STEP_Y = r32(IH-R*2) / OH;
+
 		public:
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Explicit constructor.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		OpLocal2 ( r32 _IntMin = 0.001f, r32 _IntMax = 0.002f ) : Op(utl::Shape(IW, IH), utl::Shape(OW, OH))
+		OpLocal2 ( r32 _IntMin = 0.001f, r32 _IntMax = 0.002f )
 		{
-			this->KerRadius = R;
-			this->KerArea = ((R * 2) + 1) * ((R * 2) + 1);
+			if constexpr((IW-R*2) < (R*2+1)) static_assert(false, "Kernel does not fit in horizontal input space!");
+			if constexpr((IH-R*2) < (R*2+1)) static_assert(false, "Kernel does not fit in vertical input space!");
+			
+			this->OutTrans = simd::allocAligned<r32>(OW * OH);
+			if constexpr((F == Func::RELU) || (F == Func::PRELU)) this->OutReal = simd::allocAligned<r32>(OW * OH);
+			
+			this->Gradient = simd::allocAligned<r32>(IW * IH);;
 
-			this->OutTrans.resize(this->ShpOut.size(), simd::AllocSimd);
-			if constexpr((F == Func::RELU) || (F == Func::PRELU)) this->OutReal.resize(this->ShpOut.size(), simd::AllocSimd);
-			this->Gradient.resize(this->ShpIn.size(), simd::AllocSimd);
-
-			this->Weights.resize(this->ShpOut.size(), simd::AllocSimd);
-			for(auto o = u64(0); o < this->ShpOut.size(); ++o) {this->Weights[o].resize(this->KerArea, simd::AllocSimd); rng::rbuf(this->Weights[o](), this->Weights[o].size(), _IntMin, _IntMax);}
-			this->WeightsDlt.resize(this->ShpOut.size(), simd::AllocSimd);
-			for(auto o = u64(0); o < this->ShpOut.size(); ++o) this->WeightsDlt[o].resize(this->KerArea, simd::AllocSimd);
+			this->Weights = simd::allocAligned<r32>(OW * OH * KER_AREA);
+			this->WeightsDlt = simd::allocAligned<r32>(OW * OH * KER_AREA);
+			
+			rng::rbuf(this->Weights, OW * OH * KER_AREA, _IntMin, _IntMax);
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Virtual destructor.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		~OpLocal2 ( void ) final {}
+		~OpLocal2 ( void ) final
+		{
+			simd::freeAligned<r32>(this->OutTrans);
+			if constexpr((F == Func::RELU) || (F == Func::PRELU)) simd::freeAligned<r32>(this->OutReal);
+			simd::freeAligned<r32>(this->Gradient);
+			simd::freeAligned<r32>(this->Weights);
+			simd::freeAligned<r32>(this->WeightsDlt);
+		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Trivial functions.
+		// Trivial.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto id ( void ) const -> u64 final { return 2000; }
-		auto output ( void ) -> r32* final { return this->OutTrans(); }
-		auto gradient ( void ) const -> const r32* final { return this->Gradient(); }
+		auto shpin ( void ) const -> utl::Shape final { return utl::Shape(IW, IH); }
+		auto shpout ( void ) const -> utl::Shape final { return utl::Shape(OW, OH); }
+		auto output ( void ) -> r32* final { return this->OutTrans; }
+		auto gradient ( void ) const -> const r32* final { return this->Gradient; }
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Execute operation.
@@ -80,51 +95,31 @@ namespace sx
 			if(_Input) this->Input = _Input;
 			
 
-			constexpr auto RdxMin = -i64(R);
-			constexpr auto RdxMax = i64(R + 1);
-
-			constexpr auto init_sox = []() -> auto { if constexpr(IW > OW) return r32(OW) / IW; else return r32(1.0f); };
-			constexpr auto sox = init_sox();
-
-			constexpr auto init_six = []() -> auto { if constexpr(IW < OW) return r32(IW) / OW; else return r32(1.0f); };
-			constexpr auto six = init_six();
-
-			constexpr auto init_soy = []() -> auto { if constexpr(IH > OH) return r32(OH) / IH; else return r32(1.0f); };
-			constexpr auto soy = init_soy();
-
-			constexpr auto init_siy = []() -> auto { if constexpr(IH < OH) return r32(IH) / OH; else return r32(1.0f); };
-			constexpr auto siy = init_siy();
+			auto ox = u64(0);
+			auto oy = u64(0);
 			
-			auto ox = r32(0.0f);
-			auto oy = r32(0.0f);
-			
-			for(auto iy = r32(0.0f); iy < r32(IH); iy += siy) { for(auto ix = r32(0.0f); ix < r32(IW); ix += six)
+			for(auto iy = r32(R); iy < r32(IH - R); iy += IN_STEP_Y) { for(auto ix = r32(R); ix < r32(IW - R); ix += IN_STEP_X)
 			{
-				auto Sum = r64(0.0f);
+				const auto o = math::index(ox, oy, OH);
+				
 				auto w = u64(0);
-				const auto o = math::index(u64(ox), u64(oy), OH);
 
-				for(auto ky = RdxMin; ky != RdxMax; ++ky) { for(auto kx = RdxMin; kx != RdxMax; ++kx)
+				auto Sum = r32(0.0f);
+
+				for(auto ky = KER_RDX_MIN; ky != KER_RDX_MAX; ++ky) { for(auto kx = KER_RDX_MIN; kx != KER_RDX_MAX; ++kx)
 				{
-					const auto px = i64(ix + kx);
-					const auto py = i64(iy + ky);
-					
-					if(this->ShpIn.isInside(px, py))
-					{
-						Sum += this->Input[this->ShpIn.idx(px, py)] * this->Weights[o][w];
-					}
-
+					Sum += this->Input[math::index(u64(ix+kx), u64(iy+ky), IH)] * this->Weights[math::index(o, w, KER_AREA)];
 					++w;
 				}}
 
 				if constexpr(F == Func::SIGMOID) this->OutTrans[o] = math::sigmoid(Sum);
 				if constexpr(F == Func::TANH) this->OutTrans[o] = math::tanh(Sum);
 				if constexpr(F == Func::RELU) this->OutTrans[o] = math::relu(Sum);
-				if constexpr(F == Func::PRELU) this->OutTrans[o] = math::prelu(Sum, 0.2f);
+				if constexpr(F == Func::PRELU) this->OutTrans[o] = math::prelu(Sum, 0.05f);
 
 				if constexpr((F == Func::RELU) || (F == Func::PRELU)) this->OutReal[o] = Sum;
 
-				ox += sox; if(ox >= this->ShpOut[0]) { ox = 0.0f; oy += soy; }
+				++ox; if(ox >= OW) { ox = 0; ++oy; }
 			}}
 
 
@@ -138,8 +133,8 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto reset ( void ) -> void final
 		{
-			if(!this->IsLocked) for(auto o = u64(0); o < this->ShpOut.size(); ++o) this->WeightsDlt[o].clear();
-			this->Gradient.clear();
+			if(!this->IsLocked) std::memset(this->WeightsDlt, 0, OW * OH * KER_AREA * sizeof(r32));
+			std::memset(this->Gradient, 0, IW * IH * sizeof(r32));
 
 			if(this->Front) this->Front->reset();
 		}
@@ -147,30 +142,14 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Fit target.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto fit ( const r32* _Target, const r32* _Mask = nullptr ) -> void final
+		auto fit ( const r32* _Target ) -> void final
 		{
-			constexpr auto RdxMin = -i64(R);
-			constexpr auto RdxMax = i64(R + 1);
-
-			constexpr auto init_sox = []() -> auto { if constexpr(IW > OW) return r32(OW) / IW; else return r32(1.0f); };
-			constexpr auto sox = init_sox();
-
-			constexpr auto init_six = []() -> auto { if constexpr(IW < OW) return r32(IW) / OW; else return r32(1.0f); };
-			constexpr auto six = init_six();
-
-			constexpr auto init_soy = []() -> auto { if constexpr(IH > OH) return r32(OH) / IH; else return r32(1.0f); };
-			constexpr auto soy = init_soy();
-
-			constexpr auto init_siy = []() -> auto { if constexpr(IH < OH) return r32(IH) / OH; else return r32(1.0f); };
-			constexpr auto siy = init_siy();
+			auto ox = u64(0);
+			auto oy = u64(0);
 			
-			auto ox = r32(0.0f);
-			auto oy = r32(0.0f);
-			
-
-			for(auto iy = r32(0.0f); iy < r32(IH); iy += siy) { for(auto ix = r32(0.0f); ix < r32(IW); ix += six)
+			for(auto iy = r32(R); iy < r32(IH - R); iy += IN_STEP_Y) { for(auto ix = r32(R); ix < r32(IW - R); ix += IN_STEP_X)
 			{
-				const auto o = this->ShpOut.idx(u64(ox), u64(oy));
+				const auto o = math::index(ox, oy, OH);
 					
 				auto w = u64(0);
 					
@@ -182,27 +161,24 @@ namespace sx
 				if constexpr(F == Func::SIGMOID) DerIn = math::sigmoidDer2(this->OutTrans[o]) * DerOut;
 				if constexpr(F == Func::TANH) DerIn = math::tanhDer2(this->OutTrans[o]) * DerOut;
 				if constexpr(F == Func::RELU) DerIn = math::reluDer(this->OutReal[o]) * DerOut;
-				if constexpr(F == Func::PRELU) DerIn = math::preluDer(this->OutReal[o], 0.2f) * DerOut;
+				if constexpr(F == Func::PRELU) DerIn = math::preluDer(this->OutReal[o], 0.05f) * DerOut;
 
-				for(auto ky = RdxMin; ky != RdxMax; ++ky) { for(auto kx = RdxMin; kx != RdxMax; ++kx)
+				for(auto ky = KER_RDX_MIN; ky != KER_RDX_MAX; ++ky) { for(auto kx = KER_RDX_MIN; kx != KER_RDX_MAX; ++kx)
 				{
-					const auto px = i64(ix + kx);
-					const auto py = i64(iy + ky);
-
-					if(this->ShpIn.isInside(px, py))
-					{
-						if(!this->IsLocked) this->WeightsDlt[o][w] += (this->Input[this->ShpIn.idx(px, py)] * DerIn);
-						this->Gradient[o] += this->Weights[o][w] * DerIn;
-					}
+					const auto i = math::index(u64(ix+kx), u64(iy+ky), IH);
+					const auto ow = math::index(o, w, KER_AREA);
+					
+					if(!this->IsLocked) this->WeightsDlt[ow] += (this->Input[i] * DerIn);
+					this->Gradient[i] += this->Weights[ow] * DerIn;
 
 					++w;
 				}}
 
-				ox += sox; if(ox >= this->ShpOut[0]) { ox = 0.0f; oy += soy; }
+				++ox; if(ox >= OW) { ox = 0; ++oy; }
 			}}
 
 
-			if(this->Back) this->Back->fit(nullptr, nullptr);
+			if(this->Back) this->Back->fit(nullptr);
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -212,61 +188,38 @@ namespace sx
 		{
 			if(!this->IsLocked)
 			{
-				auto Rate = _Rate;
-				if constexpr((F == Func::RELU) || (F == Func::PRELU)) Rate *= 0.1f;
-				
-				for(auto o = u64(0); o < this->ShpOut.size(); ++o)
+				if constexpr((F == Func::RELU) || (F == Func::PRELU))
 				{
-					for(auto l = u64(0); l < this->KerArea; ++l)
-					{
-						this->Weights[o][l] -= this->WeightsDlt[o][l] * Rate;
-					}
+					simd::mulVecByConstSubFromOut(OW * OH * KER_AREA, this->Weights, this->WeightsDlt, _Rate * 0.1f);
 				}
+
+				else
+				{
+					simd::mulVecByConstSubFromOut(OW * OH * KER_AREA, this->Weights, this->WeightsDlt, _Rate);
+				}
+
 			}
+
 
 			if(this->Front) this->Front->apply(_Rate);
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Store operation's structure and weights.
+		// Store operation's weights.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto store ( std::ostream& _Stream ) const -> void final
 		{
-			auto Id = this->id();
-
-			_Stream.write(reinterpret_cast<const char*>(&Id), sizeof(Id));
-			_Stream.write(reinterpret_cast<const char*>(&this->KerRadius), sizeof(this->KerRadius));
-			_Stream.write(reinterpret_cast<const char*>(&this->ShpIn), sizeof(this->ShpIn));
-			_Stream.write(reinterpret_cast<const char*>(&this->ShpOut), sizeof(this->ShpOut));
+			_Stream.write(reinterpret_cast<const char*>(this->Weights), OW * OH * KER_AREA * sizeof(r32));
 			
-			for(auto o = u64(0); o < this->ShpOut.size(); ++o) _Stream.write(this->Weights[o].cast<char>(), this->Weights[o].sizeInBytes());
-
 			if(this->Front) this->Front->store(_Stream);
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Load operation's structure and weights.
+		// Load operation's weights.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto load ( std::istream& _Stream ) -> void final
 		{
-			auto StreamId = u64(0);
-			auto StreamKerRadius = u64(0);
-			auto StreamShpIn = utl::Shape();
-			auto StreamShpOut = utl::Shape();
-			
-			_Stream.read(reinterpret_cast<char*>(&StreamId), sizeof(StreamId));
-			if(this->id() != StreamId) throw Error("sx", "OpLocal2", "load", ERR_LOAD, "Id mismatch!");
-
-			_Stream.read(reinterpret_cast<char*>(&StreamKerRadius), sizeof(StreamKerRadius));
-			if(this->KerRadius != StreamKerRadius) throw Error("sx", "OpLocal2", "load", ERR_LOAD, "Radius mismatch!");
-
-			_Stream.read(reinterpret_cast<char*>(&StreamShpIn), sizeof(StreamShpIn));
-			if(this->ShpIn != StreamShpIn) throw Error("sx", "OpLocal2", "load", ERR_LOAD, "Input shape mismatch!");
-
-			_Stream.read(reinterpret_cast<char*>(&StreamShpOut), sizeof(StreamShpOut));
-			if(this->ShpOut != StreamShpOut) throw Error("sx", "OpLocal2", "load", ERR_LOAD, "Output shape mismatch!");
-			
-			for(auto o = u64(0); o < this->ShpOut.size(); ++o) _Stream.read(this->Weights[o].cast<char>(), this->Weights[o].sizeInBytes());
+			_Stream.read(reinterpret_cast<char*>(this->Weights), OW * OH * KER_AREA * sizeof(r32));
 
 			if(this->Front) this->Front->load(_Stream);
 		}
