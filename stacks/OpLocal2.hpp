@@ -100,7 +100,7 @@ namespace sx
 			
 			for(auto iy = r32(R); iy < r32(IH - R); iy += IN_STEP_Y) { for(auto ix = r32(R); ix < r32(IW - R); ix += IN_STEP_X)
 			{
-				const auto o = math::index(ox, oy, OH);
+				const auto o = math::index_c(ox, oy, OW);
 				
 				auto w = u64(0);
 
@@ -108,7 +108,7 @@ namespace sx
 
 				for(auto ky = KER_RDX_MIN; ky != KER_RDX_MAX; ++ky) { for(auto kx = KER_RDX_MIN; kx != KER_RDX_MAX; ++kx)
 				{
-					Sum += this->Input[math::index(u64(ix+kx), u64(iy+ky), IH)] * this->Weights[math::index(o, w, KER_AREA)];
+					Sum += this->Input[math::index_c(u64(ix+kx), u64(iy+ky), IW)] * this->Weights[math::index_c(o, w, KER_AREA)];
 					++w;
 				}}
 
@@ -149,7 +149,7 @@ namespace sx
 			
 			for(auto iy = r32(R); iy < r32(IH - R); iy += IN_STEP_Y) { for(auto ix = r32(R); ix < r32(IW - R); ix += IN_STEP_X)
 			{
-				const auto o = math::index(ox, oy, OH);
+				const auto o = math::index_c(ox, oy, OW);
 					
 				auto w = u64(0);
 					
@@ -165,8 +165,8 @@ namespace sx
 
 				for(auto ky = KER_RDX_MIN; ky != KER_RDX_MAX; ++ky) { for(auto kx = KER_RDX_MIN; kx != KER_RDX_MAX; ++kx)
 				{
-					const auto i = math::index(u64(ix+kx), u64(iy+ky), IH);
-					const auto ow = math::index(o, w, KER_AREA);
+					const auto i = math::index_c(u64(ix+kx), u64(iy+ky), IW);
+					const auto ow = math::index_c(o, w, KER_AREA);
 					
 					if(!this->IsLocked) this->WeightsDlt[ow] += (this->Input[i] * DerIn);
 					this->Gradient[i] += this->Weights[ow] * DerIn;
