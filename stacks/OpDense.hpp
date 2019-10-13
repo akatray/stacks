@@ -93,7 +93,7 @@ namespace sx
 
 			for(auto o = u64(0); o < OUT; ++o)
 			{
-				auto Sum = simd::mulVecByVecSum(IN, this->Input, &this->Weights[math::index(o, 0, IN)]) + this->Biases[o];
+				auto Sum = simd::mulVecByVecSum(IN, this->Input, &this->Weights[math::index_c(o, 0, IN)]) + this->Biases[o];
 				
 				if constexpr(F == Func::SIGMOID) this->OutTrans[o] = math::sigmoid(Sum);
 				if constexpr(F == Func::TANH) this->OutTrans[o] = math::tanh(Sum);
@@ -143,8 +143,8 @@ namespace sx
 				if constexpr(F == Func::RELU) DerIn = math::reluDer(this->OutReal[o]) * DerOut;
 				if constexpr(F == Func::PRELU) DerIn = math::preluDer(this->OutReal[o], 0.2f) * DerOut;
 
-				simd::mulVecByConstAddToOut(IN, this->Gradient, &this->Weights[math::index(o, 0, IN)], DerIn);
-				if(!this->IsLocked) simd::mulVecByConstAddToOut(IN, &this->WeightsDlt[math::index(o, 0, IN)], this->Input, DerIn);
+				simd::mulVecByConstAddToOut(IN, this->Gradient, &this->Weights[math::index_c(o, 0, IN)], DerIn);
+				if(!this->IsLocked) simd::mulVecByConstAddToOut(IN, &this->WeightsDlt[math::index_c(o, 0, IN)], this->Input, DerIn);
 				if(!this->IsLocked) this->BiasesDlt[o] += DerIn;
 			}
 
