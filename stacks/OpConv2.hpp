@@ -1,6 +1,3 @@
-// Does not work.
-
-/*
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Pragma.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -10,12 +7,11 @@
 // Imports.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #include <stacks/Op.hpp>
-#include <fx/Buffer.hpp>
-#include <fx/Rng.hpp>
 #include <fx/Simd.hpp>
+#include <fx/Rng.hpp>
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Stacks namespace.
+// Stacks - Neural Networks Toolkit.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 namespace sx
 {
@@ -25,132 +21,92 @@ namespace sx
 	using namespace fx;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Operation flags.
+	// Convoliutional operation 2D.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	//constexpr auto OpFlagLocal2Id = u32(0xC0000000);
-	//constexpr auto OpFlagLocal2Ver = u32(0x00000200);
-
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Local dense network 2D.
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	class OpConv2 : public Op
+	template<u64 IW, u64 IH, u64 ID, u64 OW, u64 OH, u64 OD, u64 K = 1, u64 R = 1, Func F = Func::RELU> class OpConv2 : public Op
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Data.
+		// Compile time constants.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		Func Trans;
-		u64 KerRadius;
-		u64 KerArea;
-		u64 KerCount;
-		Buffer<r32> OutTrans;
-		Buffer<r32> OutReal;
-		Buffer<r32> Gradient;
-		Buffer<Buffer<Buffer<r64>>> Weights;
-		Buffer<Buffer<Buffer<r64>>> WeightsDlt;
+		constexpr static auto KER_AREA = u64(((R*2)+1)*((R*2)+1));
+		constexpr static auto KER_RDX_MIN = -i64(R);
+		constexpr static auto KER_RDX_MAX = i64(R+1);
+		constexpr static auto IN_STEP_X = r32(IW-R*2)/(OW-R*2);
+		constexpr static auto IN_STEP_Y = r32(IH-R*2)/(OH-R*2);
 		
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Members.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		alignas(simd::ALIGNMENT) r32 OutTrans[OW*OH*OD];
+		alignas(simd::ALIGNMENT) r32 OutReal[OW*OH*OD];
+		alignas(simd::ALIGNMENT) r32 Gradient[IW*IH*ID];
+		alignas(simd::ALIGNMENT) r32 Weights[K*KER_AREA];
+		alignas(simd::ALIGNMENT) r32 WeightsDlt[K*KER_AREA];
+
 		public:
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Explicit constructor.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		OpConv2 ( const utl::Shape& _ShpIn, const utl::Shape& _ShpOut, const u64 _Radius, const Func _Trans = Func::PRELU, r32 _IntMin = 0.001f, r32 _IntMax = 0.002f ) : Op(_ShpIn, _ShpOut)
+		OpConv2 ( const r32 _InitMag = 0.1f )
 		{
-			this->Trans = _Trans;
-			this->KerRadius = _Radius;
-			this->KerArea = (((_Radius * 2) + 1) * ((_Radius * 2) + 1));
-			this->KerCount = this->ShpOut[2];
-
-			this->OutTrans.resize(this->ShpOut.size(), simd::AllocSimd);
-			if((_Trans == Func::RELU) || (_Trans == Func::PRELU)) this->OutReal.resize(this->ShpOut.size(), simd::AllocSimd);
-			this->Gradient.resize(this->ShpIn.size(), simd::AllocSimd);
-
-			this->Weights.resize(this->KerCount, simd::AllocSimd);
-			this->WeightsDlt.resize(this->KerCount, simd::AllocSimd);
+			if constexpr((IW-R*2) < (R*2+1)) static_assert(false, "Kernel does not fit in horizontal input space!");
+			if constexpr((IH-R*2) < (R*2+1)) static_assert(false, "Kernel does not fit in vertical input space!");
 			
-			for(auto k = u64(0); k < this->KerCount; ++k)
-			{
-				this->Weights[k].resize(this->ShpIn[2], simd::AllocSimd);
-				this->WeightsDlt[k].resize(this->ShpIn[2], simd::AllocSimd);
-
-				for(auto d = u64(0); d < this->ShpIn[2]; ++d)
-				{
-					this->Weights[k][d].resize(this->KerArea, simd::AllocSimd);
-					this->WeightsDlt[k][d].resize(this->KerArea, simd::AllocSimd);
-
-					rng::rbuf<r64>(this->Weights[k][d](), this->Weights[k][d].size(), _IntMin, _IntMax);
-				}
-			}
+			rng::rbuf(this->Weights, K*KER_AREA, -_InitMag, _InitMag);
+			auto Sum = math::sum(K*KER_AREA, this->Weights);
+			for(auto k = u64(0); k < K*KER_AREA; ++k) this->Weights[k] /= Sum;
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Virtual destructor.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		~OpConv2 ( void ) final {}
+		~OpConv2 ( void ) final
+		{
+		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Trivial Set/Get functions.
+		// Trivial.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto id ( void ) const -> u64 final { return 3000; }
-		auto output ( void ) -> r32* final { return this->OutTrans(); }
-		auto gradient ( void ) const -> const r32* final { return this->Gradient(); }
+		auto shpin ( void ) const -> utl::Shape final { return utl::Shape(IW, IH, ID); }
+		auto shpout ( void ) const -> utl::Shape final { return utl::Shape(OW, OH, OD); }
+		auto output ( void ) -> r32* final { return this->OutTrans; }
+		auto gradient ( void ) const -> const r32* final { return this->Gradient; }
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Execute stack for input. Returns pointer to output buffer. Buffer belongs to last operation.
+		// Execute operation.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto execute ( const r32* _Input ) -> r32* final
 		{
 			auto InputCopy = this->Input;
 			if(_Input) this->Input = _Input;
-
-
-			const auto RdxMin = -i64(this->KerRadius);
-			const auto RdxMax = i64(this->KerRadius + 1);
-
-			auto sox = r32(1.0f);
-			if(this->ShpIn[0] > this->ShpOut[0]) sox = r32(this->ShpOut[0]) / this->ShpIn[0];
 			
-			auto six = r32(1.0f);
-			if(this->ShpIn[0] < this->ShpOut[0]) six = r32(this->ShpIn[0]) / this->ShpOut[0];
 
-			auto soy = r32(1.0f);
-			if(this->ShpIn[1] > this->ShpOut[1]) soy = r32(this->ShpOut[1]) / this->ShpIn[1];
-		
-			auto siy = r32(1.0f);
-			if(this->ShpIn[1] < this->ShpOut[1]) siy = r32(this->ShpIn[1]) / this->ShpOut[1];
-			
-			
-			for(auto k = u64(0); k < this->KerCount; ++k)
+			std::memset(this->OutTrans, 0, OW*OH*OD*sizeof(r32));
+			std::memset(this->OutReal, 0, OW*OH*OD*sizeof(r32));
+
+			for(auto k = u64(0); k < K; ++k)
 			{
-				auto ox = r32(0.0f);
-				auto oy = r32(0.0f);
-				
-				for(auto iy = r32(0.0f); iy < this->ShpIn[1]; iy += siy) { for(auto ix = r32(0.0f); ix < this->ShpIn[0]; ix += six)
+				for(auto id = u64(0); id < ID; ++id) { for(auto y = u64(R); y < u64(IH-R); ++y) { for(auto x = u64(R); x < u64(IW-R); ++x)
 				{
-					auto Sum = r64(0.0f);
+					const auto o = math::index_c(x, y, k, OW, OH);
 					auto w = u64(0);
+					auto Sum = r32(0.0f);
 
-					for(auto ky = RdxMin; ky != RdxMax; ++ky) { for(auto kx = RdxMin; kx != RdxMax; ++kx)
+					for(auto ky = KER_RDX_MIN; ky != KER_RDX_MAX; ++ky) { for(auto kx = KER_RDX_MIN; kx != KER_RDX_MAX; ++kx)
 					{
-						if(this->ShpIn.isInside(i64(ix + kx), i64(iy + ky)))
-						{
-							for(auto d = u64(0); d < this->ShpIn[2]; ++d)
-							{
-								Sum += this->Input[this->ShpIn.idx(u64(ix + kx), u64(iy + ky), d)] * this->Weights[k][d][w];
-							}
-						}
-
+						Sum += this->Input[math::index_c(x+kx, y+ky, id, IW, IH)] * this->Weights[math::index_c(w, k, KER_AREA)];
 						++w;
 					}}
 
-					if(this->Trans == Func::SIGMOID) this->OutTrans[this->ShpOut.idx(u64(ox), u64(oy), k)] = math::sigmoid(Sum);
-					if(this->Trans == Func::TANH) this->OutTrans[this->ShpOut.idx(u64(ox), u64(oy), k)] = math::tanh(Sum);
-					if(this->Trans == Func::RELU) this->OutTrans[this->ShpOut.idx(u64(ox), u64(oy), k)] = math::relu(Sum);
-					if(this->Trans == Func::PRELU) this->OutTrans[this->ShpOut.idx(u64(ox), u64(oy), k)] = math::crelu(Sum, 0.2f);
+					if constexpr(F == Func::SIGMOID) this->OutTrans[o] += math::sigmoid(Sum);
+					if constexpr(F == Func::TANH) this->OutTrans[o] += math::tanh(Sum);
+					if constexpr(F == Func::RELU) this->OutTrans[o] += math::relu(Sum);
+					if constexpr(F == Func::PRELU) this->OutTrans[o] += math::prelu(Sum, 0.5f);
 
-					if((this->Trans == Func::RELU) || (this->Trans == Func::PRELU)) this->OutReal[this->ShpOut.idx(u64(ox), u64(oy), k)] = Sum;
-
-					ox += sox; if(ox >= this->ShpOut[0]) { ox = 0.0f; oy += soy; }
-				}}
+					if constexpr((F == Func::RELU) || (F == Func::PRELU)) this->OutReal[o] += Sum;
+				}}}
 			}
 
 
@@ -160,56 +116,26 @@ namespace sx
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Setup stack for fit().
+		// Reset deltas.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		virtual auto reset ( void ) -> void
+		auto reset ( void ) -> void final
 		{
-			if(!this->IsLocked)
-			{
-				for(auto f = u64(0); f < this->KerCount; ++f)
-				{
-					for(auto d = u64(0); d < this->ShpIn[2]; ++d)
-					{
-						this->WeightsDlt[f][d].clear();
-					}
-				}
-			}
-
-			this->Gradient.clear();
+			if(!this->IsLocked) std::memset(this->WeightsDlt, 0, K*KER_AREA*sizeof(r32));
+			std::memset(this->Gradient, 0, IW*IH*ID*sizeof(r32));
 
 			if(this->Front) this->Front->reset();
 		}
 		
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Back propagate target through stack. Needs to have input executed first.
+		// Fit target.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto fit ( const r32* _Target, const r32* _Mask = nullptr ) -> void final
+		auto fit ( const r32* _Target ) -> void final
 		{
-			const auto RdxMin = -i64(this->KerRadius);
-			const auto RdxMax = i64(this->KerRadius + 1);
-
-			auto sox = r32(1.0f);
-			if(this->ShpIn[0] > this->ShpOut[0]) sox = r32(this->ShpOut[0]) / this->ShpIn[0];
-			
-			auto six = r32(1.0f);
-			if(this->ShpIn[0] < this->ShpOut[0]) six = r32(this->ShpIn[0]) / this->ShpOut[0];
-
-			auto soy = r32(1.0f);
-			if(this->ShpIn[1] > this->ShpOut[1]) soy = r32(this->ShpOut[1]) / this->ShpIn[1];
-		
-			auto siy = r32(1.0f);
-			if(this->ShpIn[1] < this->ShpOut[1]) siy = r32(this->ShpIn[1]) / this->ShpOut[1];
-			
-			
-			for(auto k = u64(0); k < this->KerCount; ++k)
+			for(auto k = u64(0); k < K; ++k)
 			{
-				auto ox = r32(0.0f);
-				auto oy = r32(0.0f);
-				
-				for(auto iy = r32(0.0f); iy < this->ShpIn[1]; iy += siy) { for(auto ix = r32(0.0f); ix < this->ShpIn[0]; ix += six)
+				for(auto id = u64(0); id < ID; ++id) { for(auto y = u64(R); y < u64(IH-R); ++y) { for(auto x = u64(R); x < u64(IW-R); ++x)
 				{
-					const auto o = this->ShpOut.idx(u64(ox), u64(oy), k);
-					
+					const auto o = math::index_c(x, y, k, OW, OH);
 					auto w = u64(0);
 					
 					auto DerOut = r32(0.0f);
@@ -217,74 +143,69 @@ namespace sx
 					else DerOut = (this->OutTrans[o] - _Target[o]);
 
 					auto DerIn = r32(0.0f);
-					if(this->Trans == Func::SIGMOID) DerIn = math::sigmoidDer2(this->OutTrans[o]) * DerOut;
-					if(this->Trans == Func::TANH) DerIn = math::tanhDer2(this->OutTrans[o]) * DerOut;
-					if(this->Trans == Func::RELU) DerIn = math::reluDer(this->OutReal[o]) * DerOut;
-					if(this->Trans == Func::PRELU) DerIn = math::creluDer(this->OutReal[o], 0.2f) * DerOut;
+					if constexpr(F == Func::SIGMOID) DerIn = math::sigmoidDer2(this->OutTrans[o]) * DerOut;
+					if constexpr(F == Func::TANH) DerIn = math::tanhDer2(this->OutTrans[o]) * DerOut;
+					if constexpr(F == Func::RELU) DerIn = math::reluDer(this->OutReal[o]) * DerOut;
+					if constexpr(F == Func::PRELU) DerIn = math::preluDer(this->OutReal[o], 0.5f) * DerOut;
 
-					DerIn *= (sox * soy) / (this->KerArea * this->KerCount);
-
-					for(auto ky = RdxMin; ky != RdxMax; ++ky) { for(auto kx = RdxMin; kx != RdxMax; ++kx)
+					for(auto ky = KER_RDX_MIN; ky != KER_RDX_MAX; ++ky) { for(auto kx = KER_RDX_MIN; kx != KER_RDX_MAX; ++kx)
 					{
-						if(this->ShpIn.isInside(i64(ix + kx), i64(iy + ky)))
-						{
-							for(auto d = u64(0); d < this->ShpIn[2]; ++d)
-							{
-								if(!this->IsLocked) this->WeightsDlt[k][d][w] += (this->Input[this->ShpIn.idx(u64(ix + kx), u64(iy + ky), d)] * DerIn);
-								this->Gradient[this->ShpIn.idx(u64(ix + kx), u64(iy + ky), d)] += this->Weights[k][d][w] * DerIn;
-							}
-						}
+						const auto i = math::index_c(x+kx, y+ky, id, IW, IH);
+						const auto ow = math::index_c(w, k, KER_AREA);
+					
+						if(!this->IsLocked) this->WeightsDlt[ow] += (this->Input[i] * DerIn);
+						this->Gradient[i] += this->Weights[ow] * DerIn;
 
 						++w;
 					}}
-
-					ox += sox; if(ox >= this->ShpOut[0]) { ox = 0.0f; oy += soy; }
-				}}
+				}}}
 			}
 
 
-			if(this->Back) this->Back->fit(nullptr, nullptr);
+			if(this->Back) this->Back->fit(nullptr);
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Apply deltas generated by fit() to stack.
+		// Apply deltas.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto apply ( const r32 _Rate = 0.01f ) -> void final
 		{
 			if(!this->IsLocked)
 			{
-				auto LocalRate = _Rate;// * 0.1f;
-				
-				for(auto f = u64(0); f < this->KerCount; ++f)
+				if constexpr((F == Func::RELU) || (F == Func::PRELU))
 				{
-					for(auto d = u64(0); d < this->ShpIn[2]; ++d)
-					{
-						for(auto w = u64(0); w < this->KerArea; ++w)
-						{
-							this->Weights[f][d][w] -= this->WeightsDlt[f][d][w] * LocalRate;
-						}
-					}
+					simd::mulVecByConstSubFromOut(K*KER_AREA, this->Weights, this->WeightsDlt, _Rate * 0.001f);
 				}
+
+				else
+				{
+					simd::mulVecByConstSubFromOut(K*KER_AREA, this->Weights, this->WeightsDlt, _Rate);
+				}
+
 			}
+
 
 			if(this->Front) this->Front->apply(_Rate);
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Store stack's weights.
+		// Store operation's weights.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto store ( std::ostream& _Stream ) const -> void final
 		{
-
+			_Stream.write(reinterpret_cast<const char*>(this->Weights), K*KER_AREA*sizeof(r32));
+			
+			if(this->Front) this->Front->store(_Stream);
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Load stack's weights.
+		// Load operation's weights.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto load ( std::istream& _Stream ) -> void final
 		{
+			_Stream.read(reinterpret_cast<char*>(this->Weights), K*KER_AREA*sizeof(r32));
 
+			if(this->Front) this->Front->load(_Stream);
 		}
 	};
 }
-*/
