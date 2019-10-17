@@ -40,7 +40,7 @@ namespace sx
 		constexpr static auto OW = initOW();
 		constexpr static auto initOH ( void ) { if constexpr(DIR == ScaleDir::UP) return IH*2; else return IH/2; };	
 		constexpr static auto OH = initOH();
-		
+	
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Members.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -48,6 +48,11 @@ namespace sx
 		alignas(simd::ALIGNMENT) u64 OutIdx[OW*OH];
 		alignas(simd::ALIGNMENT) r32 Gradient[IW*IH];
 		public:
+
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Constructor.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		OpScale2 ( void ) : OutTrans{}, OutIdx{}, Gradient{} {}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Virtual destructor.
@@ -59,8 +64,8 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		constexpr auto outSz ( void ) const -> u64 final { return OW*OH; }
 		constexpr auto outBt ( void ) const -> u64 final { return OW*OH*sizeof(r32); }
-		auto out ( void ) const -> const r32* final { return this->OutTrans; }
-		auto gradient ( void ) const -> const r32* final { return this->Gradient; }
+		constexpr auto out ( void ) const -> const r32* final { return this->OutTrans; }
+		constexpr auto gradient ( void ) const -> const r32* final { return this->Gradient; }
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Execute operation.
@@ -92,8 +97,6 @@ namespace sx
 
 			if constexpr(DIR == ScaleDir::DOWN)
 			{
-				std::memset(this->OutTrans, 0, OW*OH*sizeof(r32));
-				
 				auto ox = u64(0);
 				auto oy = u64(0);
 
@@ -105,11 +108,13 @@ namespace sx
 					const auto Value3 = this->Input[math::index_c(ix+1, iy+1, IW)];
 
 					const auto o = math::index_c(ox, oy, OW);
+					auto ValueMax = r32(0.0f);
 
-					if(Value0 > this->OutTrans[o]) { this->OutTrans[o] = Value0; this->OutIdx[o] = 0; }
-					if(Value1 > this->OutTrans[o]) { this->OutTrans[o] = Value1; this->OutIdx[o] = 1; }
-					if(Value2 > this->OutTrans[o]) { this->OutTrans[o] = Value2; this->OutIdx[o] = 2; }
-					if(Value3 > this->OutTrans[o]) { this->OutTrans[o] = Value3; this->OutIdx[o] = 3; }
+					if(Value0 > ValueMax) { ValueMax = Value0; this->OutIdx[o] = 0; }
+					if(Value1 > ValueMax) { ValueMax = Value1; this->OutIdx[o] = 1; }
+					if(Value2 > ValueMax) { ValueMax = Value2; this->OutIdx[o] = 2; }
+					if(Value3 > ValueMax) { ValueMax = Value3; this->OutIdx[o] = 3; }
+					this->OutTrans[o] = ValueMax;
 
 					++ox; if(ox >= OW) { ox = 0; ++oy; }
 				}}

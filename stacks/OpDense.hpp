@@ -41,7 +41,7 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Explicit constructor.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		OpDense ( const r32 _IntMin = -0.001f, const r32 _IntMax = 0.001f )
+		OpDense ( const r32 _IntMin = -0.001f, const r32 _IntMax = 0.001f ) : OutTrans{}, OutReal{}, Gradient{}, Weights{}, WeightsDlt{}, Biases{}, BiasesDlt{}
 		{
 			rng::rbuf(this->Weights, OUT * IN, _IntMin, _IntMax);
 			rng::rbuf(this->Biases, OUT, _IntMin, _IntMax);
@@ -57,8 +57,8 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		constexpr auto outSz ( void ) const -> u64 final { return OUT; }
 		constexpr auto outBt ( void ) const -> u64 final { return OUT*sizeof(r32); }
-		auto out ( void ) const -> const r32* final { return this->OutTrans; }
-		auto gradient ( void ) const -> const r32* final { return this->Gradient; }
+		constexpr auto out ( void ) const -> const r32* final { return this->OutTrans; }
+		constexpr auto gradient ( void ) const -> const r32* final { return this->Gradient; }
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Execute operation.

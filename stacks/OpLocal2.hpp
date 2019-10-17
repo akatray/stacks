@@ -46,7 +46,7 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Explicit constructor.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		OpLocal2 ( const r32 _IntMin = 0.001f, const r32 _IntMax = 0.002f )
+		OpLocal2 ( const r32 _IntMin = 0.001f, const r32 _IntMax = 0.002f ) : OutTrans{}, OutReal{}, Gradient{}, Weights{}, WeightsDlt{}
 		{
 			if constexpr((W-R*2) < (R*2+1)) static_assert(false, "Kernel does not fit in horizontal space!");
 			if constexpr((H-R*2) < (R*2+1)) static_assert(false, "Kernel does not fit in vertical space!");
@@ -64,8 +64,8 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		constexpr auto outSz ( void ) const -> u64 final { return W*H; }
 		constexpr auto outBt ( void ) const -> u64 final { return W*H*sizeof(r32); }
-		auto out ( void ) const -> const r32* final { return this->OutTrans; }
-		auto gradient ( void ) const -> const r32* final { return this->Gradient; }
+		constexpr auto out ( void ) const -> const r32* final { return this->OutTrans; }
+		constexpr auto gradient ( void ) const -> const r32* final { return this->Gradient; }
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Execute operation.
