@@ -62,18 +62,17 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Trivial.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto id ( void ) const -> u64 final { return 2000; }
-		auto shpin ( void ) const -> utl::Shape final { return utl::Shape(W, H); }
-		auto shpout ( void ) const -> utl::Shape final { return utl::Shape(W, H); }
-		auto output ( void ) -> r32* final { return this->OutTrans; }
+		constexpr auto outSz ( void ) const -> u64 final { return W*H; }
+		constexpr auto outBt ( void ) const -> u64 final { return W*H*sizeof(r32); }
+		auto out ( void ) const -> const r32* final { return this->OutTrans; }
 		auto gradient ( void ) const -> const r32* final { return this->Gradient; }
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Execute operation.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto execute ( const r32* _Input ) -> r32* final
+		auto exe ( const r32* _Input ) -> const r32* final
 		{
-			auto InputCopy = this->Input;
+			const auto InputCopy = this->Input;
 			if(_Input) this->Input = _Input;
 
 			
@@ -99,8 +98,8 @@ namespace sx
 
 
 			if(this->Back) this->Input = InputCopy;
-			if(this->Front) return this->Front->execute(nullptr);
-			else return this->output();
+			if(this->Front) return this->Front->exe(nullptr);
+			else return this->out();
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------

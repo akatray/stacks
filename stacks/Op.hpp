@@ -7,11 +7,10 @@
 // Imports.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #include <fx/Types.hpp>
-#include <fx/Utilities.hpp>
 #include <iostream>
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Stacks - Neural Networks Toolkit.
+// Stacks: Neural Networks Toolkit.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 namespace sx
 {
@@ -52,25 +51,24 @@ namespace sx
 		Op ( void ) : Front(nullptr), Back(nullptr), Input(nullptr), IsLocked(false) {}
 		virtual ~Op ( void ) {}
 
-		virtual auto id ( void ) const -> u64 { return 0; }
-		virtual auto shpin ( void ) const -> utl::Shape { return utl::Shape(0); }
-		virtual auto shpout ( void ) const -> utl::Shape { return utl::Shape(0); }
-		inline auto input ( void ) const -> const r32* { return this->Input; }
-		virtual auto output ( void ) -> r32* { return nullptr; }
+		virtual auto outSz ( void ) const -> u64 { return 0; } // Output size.
+		virtual auto outBt ( void ) const -> u64 { return 0; }  // Output size in bytes.
+		virtual auto in ( void ) const -> const r32* { return this->Input; }
+		virtual auto out ( void ) const -> const r32* { return nullptr; }
 		virtual auto gradient ( void ) const -> const r32* { return nullptr; }
 		virtual auto back ( void ) -> Op* { return this->Back; }
 		virtual auto front ( void ) -> Op* { return this->Front; }
-		virtual auto setBack ( Op* _Back ) -> void { this->Back = _Back; if(_Back) { this->Input = _Back->output(); _Back->setFront(this); } }
+		virtual auto setBack ( Op* _Back ) -> void { this->Back = _Back; if(_Back) { this->Input = _Back->out(); _Back->setFront(this); } }
 		virtual auto setFront ( Op* _Front ) -> void { this->Front = _Front; }
 
 		virtual auto lock ( void ) -> void { this->IsLocked = true; }
 		virtual auto unlock ( void ) -> void { this->IsLocked = false; }
 
-		virtual auto execute ( const r32* _Input ) -> r32* { return nullptr; }
-		virtual auto reset ( void ) -> void { return; }
-		virtual auto fit ( const r32* _Target ) -> void { return; }
-		virtual auto apply ( const r32 _Rate = 0.01f ) -> void { return; }
-		virtual auto store ( std::ostream& _Stream ) const -> void { return; }
-		virtual auto load ( std::istream& _Stream ) -> void { return; }
+		virtual auto exe ( const r32* _Input ) -> const r32* = 0;
+		virtual auto reset ( void ) -> void { if(this->Front) this->Front->reset(); }
+		virtual auto fit ( const r32* _Target ) -> void = 0;
+		virtual auto apply ( const r32 _Rate = 0.01f ) -> void { if(this->Front) this->Front->apply(_Rate); }
+		virtual auto store ( std::ostream& _Stream ) const -> void { if(this->Front) this->Front->store(_Stream); }
+		virtual auto load ( std::istream& _Stream ) -> void { if(this->Front) this->Front->load(_Stream); }
 	};
 }

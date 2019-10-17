@@ -8,7 +8,6 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #include <stacks/Op.hpp>
 #include <fx/Simd.hpp>
-#include <fx/Rng.hpp>
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Stacks: Neural Networks Toolkit.
@@ -21,42 +20,45 @@ namespace sx
 	using namespace fx;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Dense operation.
+	// Scaling direction.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	template<u64 IN, u64 OUT, Func F = Func::SIGMOID> class OpDense : public Op
+	enum class ScaleDir
 	{
+		UP,
+		DOWN
+	};
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Scaling operation 2D.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	template<u64 IW, u64 IH, ScaleDir DIR> class OpScale2 : public Op
+	{
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Compile time constants.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		constexpr static auto initOW ( void ) { if constexpr(DIR == ScaleDir::UP) return IW*2; else return IW/2; };	
+		constexpr static auto OW = initOW();
+		constexpr static auto initOH ( void ) { if constexpr(DIR == ScaleDir::UP) return IH*2; else return IH/2; };	
+		constexpr static auto OH = initOH();
+		
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Members.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		alignas(simd::ALIGNMENT) r32 OutTrans[OUT];
-		alignas(simd::ALIGNMENT) r32 OutReal[OUT];
-		alignas(simd::ALIGNMENT) r32 Gradient[IN];
-		alignas(simd::ALIGNMENT) r32 Weights[OUT*IN];
-		alignas(simd::ALIGNMENT) r32 WeightsDlt[OUT*IN];
-		alignas(simd::ALIGNMENT) r32 Biases[OUT];
-		alignas(simd::ALIGNMENT) r32 BiasesDlt[OUT];
-
+		alignas(simd::ALIGNMENT) r32 OutTrans[OW*OH];
+		alignas(simd::ALIGNMENT) u64 OutIdx[OW*OH];
+		alignas(simd::ALIGNMENT) r32 Gradient[IW*IH];
 		public:
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Explicit constructor.
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		OpDense ( const r32 _IntMin = -0.001f, const r32 _IntMax = 0.001f )
-		{
-			rng::rbuf(this->Weights, OUT * IN, _IntMin, _IntMax);
-			rng::rbuf(this->Biases, OUT, _IntMin, _IntMax);
-		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Virtual destructor.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		~OpDense ( void ) final {}
+		~OpScale2 ( void ) final {}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Trivial.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		constexpr auto outSz ( void ) const -> u64 final { return OUT; }
-		constexpr auto outBt ( void ) const -> u64 final { return OUT*sizeof(r32); }
+		constexpr auto outSz ( void ) const -> u64 final { return OW*OH; }
+		constexpr auto outBt ( void ) const -> u64 final { return OW*OH*sizeof(r32); }
 		auto out ( void ) const -> const r32* final { return this->OutTrans; }
 		auto gradient ( void ) const -> const r32* final { return this->Gradient; }
 
@@ -67,20 +69,52 @@ namespace sx
 		{
 			const auto InputCopy = this->Input;
 			if(_Input) this->Input = _Input;
+
 			
-
-			for(auto o = u64(0); o < OUT; ++o)
+			if constexpr(DIR == ScaleDir::UP)
 			{
-				auto Sum = simd::mulVecByVecSum(IN, this->Input, &this->Weights[math::index_c(o, 0, IN)]) + this->Biases[o];
+				auto ox = u64(0);
+				auto oy = u64(0);
 				
-				if constexpr(F == Func::SIGMOID) this->OutTrans[o] = math::sigmoid(Sum);
-				if constexpr(F == Func::TANH) this->OutTrans[o] = math::tanh(Sum);
-				if constexpr(F == Func::RELU) this->OutTrans[o] = math::relu(Sum);
-				if constexpr(F == Func::PRELU) this->OutTrans[o] = math::prelu(Sum, 0.1f);
+				for(auto iy = u64(0); iy < u64(IH); ++iy) { for(auto ix = u64(0); ix < u64(IW); ++ix)
+				{
+					const auto Value = this->Input[math::index_c(ix, iy, IW)];
+					
+					this->OutTrans[math::index_c(ox, oy, OW)] = Value;
+					this->OutTrans[math::index_c(ox+1, oy, OW)] = Value;
+					this->OutTrans[math::index_c(ox, oy+1, OW)] = Value;
+					this->OutTrans[math::index_c(ox+1, oy+1, OW)] = Value;
 
-				if constexpr((F == Func::RELU) || (F == Func::PRELU)) this->OutReal[o] = Sum;
+					ox += 2; if(ox >= OW) { ox = 0; oy += 2; }
+				}}
 			}
 
+
+			if constexpr(DIR == ScaleDir::DOWN)
+			{
+				std::memset(this->OutTrans, 0, OW*OH*sizeof(r32));
+				
+				auto ox = u64(0);
+				auto oy = u64(0);
+
+				for(auto iy = u64(0); iy < u64(IH); iy += 2) { for(auto ix = u64(0); ix < u64(IW); ix += 2)
+				{
+					const auto Value0 = this->Input[math::index_c(ix, iy, IW)];
+					const auto Value1 = this->Input[math::index_c(ix+1, iy, IW)];
+					const auto Value2 = this->Input[math::index_c(ix, iy+1, IW)];
+					const auto Value3 = this->Input[math::index_c(ix+1, iy+1, IW)];
+
+					const auto o = math::index_c(ox, oy, OW);
+
+					if(Value0 > this->OutTrans[o]) { this->OutTrans[o] = Value0; this->OutIdx[o] = 0; }
+					if(Value1 > this->OutTrans[o]) { this->OutTrans[o] = Value1; this->OutIdx[o] = 1; }
+					if(Value2 > this->OutTrans[o]) { this->OutTrans[o] = Value2; this->OutIdx[o] = 2; }
+					if(Value3 > this->OutTrans[o]) { this->OutTrans[o] = Value3; this->OutIdx[o] = 3; }
+
+					++ox; if(ox >= OW) { ox = 0; ++oy; }
+				}}
+			}
+			
 
 			if(this->Back) this->Input = InputCopy;
 			if(this->Front) return this->Front->exe(nullptr);
@@ -88,19 +122,12 @@ namespace sx
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Reset deltas.
+		// Reset gradient.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto reset ( void ) -> void final
 		{
-			if(!this->IsLocked)
-			{
-				std::memset(this->WeightsDlt, 0, OUT * IN * sizeof(r32));
-				std::memset(this->BiasesDlt, 0, OUT * sizeof(r32));
-			}
-
-			std::memset(this->Gradient, 0, IN * sizeof(r32));
-
-
+			std::memset(this->Gradient, 0, IW*IH*sizeof(r32));
+			
 			if(this->Front) this->Front->reset();
 		}
 		
@@ -109,62 +136,51 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto fit ( const r32* _Target ) -> void final
 		{
-			for(auto o = u64(0); o < OUT; ++o)
+			if constexpr(DIR == ScaleDir::UP)
 			{
-				auto DerOut = r32(0.0f);
-				if(this->Front) DerOut = this->Front->gradient()[o];
-				else DerOut = this->OutTrans[o] - _Target[o];
+				auto ix = r32(0.0f);
+				auto iy = r32(0.0f);
+				
+				for(auto oy = u64(0); oy < u64(OH); ++oy) { for(auto ox = u64(0); ox < u64(OW); ++ox)
+				{
+					const auto o = math::index_c(ox, oy, OW);
 
-				auto DerIn = r32(0.0f);
-				if constexpr(F == Func::SIGMOID) DerIn = math::sigmoidDer2(this->OutTrans[o]) * DerOut;
-				if constexpr(F == Func::TANH) DerIn = math::tanhDer2(this->OutTrans[o]) * DerOut;
-				if constexpr(F == Func::RELU) DerIn = math::reluDer(this->OutReal[o]) * DerOut;
-				if constexpr(F == Func::PRELU) DerIn = math::preluDer(this->OutReal[o], 0.1f) * DerOut;
+					auto DerOut = r32(0.0f);
+					if(this->Front) DerOut = this->Front->gradient()[o];
+					else DerOut = (this->OutTrans[o] - _Target[o]);
 
-				simd::mulVecByConstAddToOut(IN, this->Gradient, &this->Weights[math::index_c(o, 0, IN)], DerIn);
-				if(!this->IsLocked) simd::mulVecByConstAddToOut(IN, &this->WeightsDlt[math::index_c(o, 0, IN)], this->Input, DerIn);
-				if(!this->IsLocked) this->BiasesDlt[o] += DerIn;
+					this->Gradient[math::index_c(ix, iy, IW)] += DerOut;
+
+					ix += 0.5f; if(ix >= IW) { ix = 0.0f; iy += 0.5; }
+				}}
+			}
+
+
+			if constexpr(DIR == ScaleDir::DOWN)
+			{
+				auto ox = u64(0);
+				auto oy = u64(0);
+
+				for(auto iy = u64(0); iy < u64(IH); iy += 2) { for(auto ix = u64(0); ix < u64(IW); ix += 2)
+				{
+					const auto o = math::index_c(ox, oy, OW);
+					
+					auto DerOut = r32(0.0f);
+					if(this->Front) DerOut = this->Front->gradient()[o];
+					else DerOut = (this->OutTrans[o] - _Target[o]);
+
+					if(this->OutIdx[o] == 0) this->Gradient[math::index_c(ix, iy, IW)] = DerOut;
+					else if(this->OutIdx[o] == 1) this->Gradient[math::index_c(ix+1, iy, IW)] = DerOut;
+					else if(this->OutIdx[o] == 2) this->Gradient[math::index_c(ix, iy+1, IW)] = DerOut;
+					else this->Gradient[math::index_c(ix+1, iy+1, IW)] = DerOut;
+
+
+					++ox; if(ox >= OW) { ox = 0; ++oy; }
+				}}
 			}
 
 
 			if(this->Back) this->Back->fit(nullptr);
-		}
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Apply deltas.
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto apply ( const r32 _Rate = 0.01f ) -> void final
-		{
-			if(!this->IsLocked)
-			{
-				simd::mulVecByConstSubFromOut(OUT * IN, this->Weights, this->WeightsDlt, _Rate);
-				simd::mulVecByConstSubFromOut(OUT, this->Biases, this->BiasesDlt, _Rate);
-			}
-
-
-			if(this->Front) this->Front->apply(_Rate);
-		}
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Store operation's weights.
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto store ( std::ostream& _Stream ) const -> void final
-		{
-			_Stream.write(reinterpret_cast<const char*>(this->Weights), OUT * IN * sizeof(r32));
-			_Stream.write(reinterpret_cast<const char*>(this->Biases), OUT * sizeof(r32));
-			
-			if(this->Front) this->Front->store(_Stream);
-		}
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Load operation's weights.
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto load ( std::istream& _Stream ) -> void final
-		{
-			_Stream.read(reinterpret_cast<char*>(this->Weights), OUT * IN * sizeof(r32));
-			_Stream.read(reinterpret_cast<char*>(this->Biases), OUT * sizeof(r32));
-			
-			if(this->Front) this->Front->load(_Stream);
 		}
 	};
 }
