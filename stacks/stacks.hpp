@@ -6,9 +6,18 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Imports.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#include "./Op.hpp"
-#include "./OpDense.hpp"
-#include "./OpScale2.hpp"
-#include "./OpLocal2.hpp"
-#include "./OpConv2.hpp"
-#include "./Training.hpp"
+#include "./Model.hpp"
+
+#include "./Layer.hpp"
+#include "./Dense.hpp"
+//#include "./OpLocal2.hpp"
+#include "./Conv2.hpp"
+
+//#include "./OpDrop.hpp"
+//#include "./OpNoise.hpp"
+#include "./Scale2.hpp"
+
+#include "./OpNorm.hpp"
+
+//#include "./Training.hpp"
+

@@ -1,1 +1,0 @@
-Any improvements are welcome. Must have the same style as rest of the code.

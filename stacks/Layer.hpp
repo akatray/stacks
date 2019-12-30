@@ -7,10 +7,13 @@
 // Imports.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #include <fx/Types.hpp>
+#include "./fn_error.hpp"
+#include "./fn_transfer.hpp"
+#include "./fn_vector.hpp"
 #include <iostream>
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Stacks: Neural Networks Toolkit.
+// Neural Networks Experiment.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 namespace sx
 {
@@ -18,57 +21,69 @@ namespace sx
 	// Expand namespaces.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	using namespace fx;
-	
+
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Transformation function options.
+	// Optimizer options.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	enum class Func
+	enum class Optim
 	{
-		SIGMOID,
-		TANH,
-		RELU,
-		PRELU
+		NONE,
+		MOMENTUM,
+		ADAM,
 	};
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Stack operation interface.
+	// Constants.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	class Op
+	constexpr auto ALIGNMENT = u64(32);
+	constexpr auto BETA1 = r64(0.9);
+	constexpr auto BETA1F = r64(1.0) - BETA1;
+	constexpr auto BETA2 = r64(0.99999999);
+	constexpr auto BETA2F = r64(1.0) - BETA2;
+	constexpr auto EPSILON = r64(1e-8);
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Layer interface.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	template<class T> class Layer
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Members.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		protected:
-		Op* Back;
-		Op* Front;
-		const r32* Input;
+		Layer* Back;
+		Layer* Front;
+		const T* Input;
 		bool IsLocked;
 		public:
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Functions.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		Op ( void ) : Front(nullptr), Back(nullptr), Input(nullptr), IsLocked(false) {}
-		virtual ~Op ( void ) {}
+		Layer ( void ) : Front(nullptr), Back(nullptr), Input(nullptr), IsLocked(false) {}
+		virtual ~Layer ( void ) {}
 
-		virtual auto outSz ( void ) const -> u64 { return 0; } // Output size.
-		virtual auto outBt ( void ) const -> u64 { return 0; }  // Output size in bytes.
-		virtual auto in ( void ) const -> const r32* { return this->Input; }
-		virtual auto out ( void ) const -> const r32* { return nullptr; }
-		virtual auto gradient ( void ) const -> const r32* { return nullptr; }
-		virtual auto back ( void ) -> Op* { return this->Back; }
-		virtual auto front ( void ) -> Op* { return this->Front; }
-		virtual auto setBack ( Op* _Back ) -> void { this->Back = _Back; if(_Back) { this->Input = _Back->out(); _Back->setFront(this); } }
-		virtual auto setFront ( Op* _Front ) -> void { this->Front = _Front; }
+		virtual auto outSz ( void ) const -> u64 { return 0; }
+		virtual auto outSzBt ( void ) const -> u64 { return this->outSz() * sizeof(T); }
+		virtual auto in ( void ) const -> const T* { return this->Input; }
+		virtual auto out ( void ) const -> const T* { return nullptr; }
+		virtual auto gradient ( void ) const -> const T* { return nullptr; }
+		virtual auto back ( void ) -> Layer* { return this->Back; }
+		virtual auto front ( void ) -> Layer* { return this->Front; }
+		virtual auto setBack ( Layer* _Back ) -> void { this->Back = _Back; if(_Back) { this->Input = _Back->out(); _Back->setFront(this); } }
+		virtual auto setFront ( Layer* _Front ) -> void { this->Front = _Front; }
 
 		virtual auto lock ( void ) -> void { this->IsLocked = true; }
 		virtual auto unlock ( void ) -> void { this->IsLocked = false; }
 
-		virtual auto exe ( const r32* _Input ) -> const r32* = 0;
+		virtual auto exe ( void ) -> void = 0;
 		virtual auto reset ( void ) -> void { if(this->Front) this->Front->reset(); }
-		virtual auto fit ( const r32* _Target ) -> void = 0;
-		virtual auto apply ( const r32 _Rate = 0.01f ) -> void { if(this->Front) this->Front->apply(_Rate); }
+		virtual auto err (const T* _Target)-> T { return 0; }
+		virtual auto fit ( const T* _Target, const T _Rate, const T _ErrParam ) -> void = 0;
+		virtual auto apply ( const r64 _Rate ) -> void { if(this->Front) this->Front->apply(_Rate); }
 		virtual auto store ( std::ostream& _Stream ) const -> void { if(this->Front) this->Front->store(_Stream); }
 		virtual auto load ( std::istream& _Stream ) -> void { if(this->Front) this->Front->load(_Stream); }
+
+		inline auto setInput ( const T* _Input ) -> const T* { const auto InputLast = this->Input; if(_Input) this->Input = _Input; return InputLast; }
 	};
 }

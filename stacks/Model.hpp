@@ -6,13 +6,13 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Imports.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#include "./Op.hpp"
+#include "./Layer.hpp"
 #include <fx/Types.hpp>
 #include <vector>
 #include <fstream>
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Stacks - Neural Networks Toolkit.
+// Neural Networks Experiment.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 namespace sx
 {
@@ -22,129 +22,162 @@ namespace sx
 	using namespace fx;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Operations stack. Deletes given operations on destruction.
+	// Network components class.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	class Stack
+	enum class CompClass
+	{
+		LAYERS,
+		NETWORKS
+	};
+	
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Neural network.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	template<class T> class Network
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Members.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		std::vector<Op*> Ops;
+		const CompClass Mode;
+		std::vector<ptr> Components;
 		public:
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Destructor.
+		// Constructor.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		~Stack ( void ) { for(auto o : this->Ops) delete o; }
+		Network ( const CompClass _Mode ) : Mode(_Mode), Components() {}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Trivial.
+		// Attach component.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto front ( void ) -> Op* { return this->Ops.front(); }
-		auto back ( void ) -> Op* { return this->Ops.back(); }
-		auto isolate ( void ) -> void { this->front()->setBack(nullptr); this->back()->setFront(nullptr); }
-		auto push ( Op* _Op ) -> void { if(this->Ops.size() != 0) _Op->setBack(this->Ops.back()); this->Ops.push_back(_Op); }
-		auto lock (void) -> void { for(auto o : this->Ops) o->lock(); }
-		auto unlock (void) -> void { for(auto o : this->Ops) o->unlock(); }
-
-
-		auto outSz ( void ) const -> u64 { return this->Ops.back()->outSz(); }
-		auto outBt ( void ) const -> u64 { return this->Ops.back()->outBt(); }
-		auto out ( void ) const -> const r32* { return this->Ops.back()->out(); }
-
+		auto attach ( Layer<T>* _Layer ) { if(this->Mode == CompClass::LAYERS) this->Components.push_back(_Layer); else throw Error("sx"s, "Network<T>"s, "attach"s, 0, "Wrong mode!"s); }
+		auto attach ( Network<T>* _Model ) { if(this->Mode == CompClass::NETWORKS) this->Components.push_back(_Model); else throw Error("sx"s, "Network<T>"s, "attach"s, 0, "Wrong mode!"s);}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Execute stack.
+		// Get most front layer in network.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto exe ( const r32* _Input ) -> const r32*
+		auto front ( void )
 		{
-			this->isolate();
-			return this->front()->exe(_Input);
+			if(this->Mode == CompClass::LAYERS) return reinterpret_cast<Layer<T>*>(this->Components.front());
+			if(this->Mode == CompClass::NETWORKS) return reinterpret_cast<Network<T>*>(this->Components.front())->front();
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Reset, fit and apply stack.
+		// Get most back layer in network.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto fitFull ( const r32* _Target, const r32 _Rate = 0.01f ) -> void
+		auto back ( void )
 		{
-			this->isolate();
-
-			this->front()->reset();
-			this->back()->fit(_Target);
-			this->front()->apply(_Rate);
+			if(this->Mode == CompClass::LAYERS) return reinterpret_cast<Layer<T>*>(this->Components.back());
+			if(this->Mode == CompClass::NETWORKS) return reinterpret_cast<Network<T>*>(this->Components.back())->back();
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Store stack to file.
+		// Setup network for use.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto storeToFile ( const std::string& _Filename ) -> void
+		auto connect ( void ) -> void
 		{
-			this->isolate();
+			// Connect layers.
+			if(this->Mode == CompClass::LAYERS)
+			{
+				for(auto i = u64(0); i < this->Components.size(); ++i)
+				{
+					if(i == 0) reinterpret_cast<Layer<T>*>(this->Components[i])->setBack(nullptr); // First layer has no back layer.
+					if(i != 0) reinterpret_cast<Layer<T>*>(this->Components[i])->setBack(reinterpret_cast<Layer<T>*>(this->Components[i-1])); // Chain layers.
+					if(i == (this->Components.size() - 1)) reinterpret_cast<Layer<T>*>(this->Components[i])->setFront(nullptr); // Last layer has no front layer.
+				}
+			}
+
+			// Connect networks.
+			if(this->Mode == CompClass::NETWORKS)
+			{
+				// Recursively connect subnetworks.
+				for(auto i = u64(0); i < this->Components.size(); ++i)
+				{
+					reinterpret_cast<Network<T>*>(this->Components[i])->connect();
+				}
+
+				// Connect subnetworks tails.
+				for(auto i = u64(0); i < this->Components.size(); ++i)
+				{
+					if(i != 0) reinterpret_cast<Network<T>*>(this->Components[i])->front()->setBack(reinterpret_cast<Network<T>*>(this->Components[i-1])->back());
+				}
+
+				// Cut of tails.
+				this->front()->setBack(nullptr);
+				this->back()->setFront(nullptr);
+			}
+		}
+
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Call delete on layer pointers.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		auto freeLayers ( void ) -> void
+		{
+			// Delete containing layers.
+			if(this->Mode == CompClass::LAYERS) for(auto i = u64(0); i < this->Components.size(); ++i) delete reinterpret_cast<Layer<T>*>(this->Components[i]);
+
+			// Forwards request to subnetworks.
+			if(this->Mode == CompClass::NETWORKS) for(auto i = u64(0); i < this->Components.size(); ++i) reinterpret_cast<Network<T>*>(this->Components[i])->freeLayers();
+		}
+
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Lock layers from updates.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		auto lock ( void ) -> void
+		{
+			// Lock containing layers.
+			if(this->Mode == CompClass::LAYERS) for(auto i = u64(0); i < this->Components.size(); ++i) reinterpret_cast<Layer<T>*>(this->Components[i])->lock();
+
+			// Forwards request to subnetworks.
+			if(this->Mode == CompClass::NETWORKS) for(auto i = u64(0); i < this->Components.size(); ++i) reinterpret_cast<Network<T>*>(this->Components[i])->lock();
+		}
+
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Unlock layers from updates.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		auto unlock ( void ) -> void
+		{
+			// Unlock containing layers.
+			if(this->Mode == CompClass::LAYERS) for(auto i = u64(0); i < this->Components.size(); ++i) reinterpret_cast<Layer<T>*>(this->Components[i])->unlock();
+
+			// Forwards request to subnetworks.
+			if(this->Mode == CompClass::NETWORKS) for(auto i = u64(0); i < this->Components.size(); ++i) reinterpret_cast<Network<T>*>(this->Components[i])->unlock();
+		}
+
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Mirror layer functions.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		auto outSz ( const bool _Connect = true ) const -> u64 { if(_Connect) this->connect(); return this->back()->outSz(); }
+		auto outSzBt ( const bool _Connect = true ) const -> u64 { if(_Connect) this->connect(); return this->back()->outSzBt(); }
+		auto in ( const bool _Connect = true ) -> const T* { if(_Connect) this->connect(); return this->front()->in(); }
+		auto out ( const bool _Connect = true ) -> const T* { if(_Connect) this->connect(); return this->back()->out(); }
+		
+		auto exe ( const T* _Input, const bool _Connect = true ) -> void { if(_Connect) this->connect(); this->front()->setInput(_Input); this->front()->exe(); }
+		auto reset ( const bool _Connect = true ) -> void { if(_Connect) this->connect(); this->front()->reset(); }
+		auto err ( const T* _Target, const bool _Connect = true ) -> T { if(_Connect) this->connect(); return this->back()->err(_Target); }
+		auto fit ( const T* _Target, const T _Rate, const T _ErrParam, const bool _Connect = true ) -> void { if(_Connect) this->connect(); return this->back()->fit(_Target, _Rate, _ErrParam); }
+		auto apply ( const T _Rate, const bool _Connect = true ) -> void { if(_Connect) this->connect(); return this->front()->apply(_Rate); }
+
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Store network to file.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		auto storeToFile ( const std::string& _Filename, const bool _Connect = true )
+		{
+			if(_Connect) this->connect();
 
 			auto File = std::ofstream(_Filename, std::ios::binary);
 			if(File.is_open()) this->front()->store(File);
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Load stack from file.
+		// Load network from file.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto loadFromFile ( const std::string& _Filename ) -> void
+		auto loadFromFile ( const std::string& _Filename, const bool _Connect = true )
 		{
-			this->isolate();
+			if(_Connect) this->connect();
 
 			auto File = std::ifstream(_Filename, std::ios::binary);
 			if(File.is_open()) this->front()->load(File);
-		}
-	};
-
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Stacks chain. Doesn't manage stacks lifetime.
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	class Stacks
-	{
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Members.
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		std::vector<Stack*> Towers;
-		public:
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Trivial fuctions.
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto front ( void ) -> Stack* { return Towers.front(); }
-		auto back ( void ) -> Stack* { return Towers.back(); }
-		auto opBeg ( void ) -> Op* { return this->front()->front(); }
-		auto opEnd ( void ) -> Op* { auto End = Towers.back()->back(); while(true){ if(End->front()) End = End->front(); else return End; } }
-		auto push ( Stack* _Unit ) -> void { this->Towers.push_back(_Unit); }
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Isolate member stacks and then chains them front to back.
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto connect ( void ) -> void
-		{
-			for(auto u : this->Towers) u->isolate();
-			for(auto u = u64(0); u < this->Towers.size(); ++u) if(u != 0) this->Towers[u]->front()->setBack(this->Towers[u-1]->back());
-		}
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// 
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto exe ( const r32* _Input ) -> const r32*
-		{
-			this->connect();
-			return this->opBeg()->exe(_Input);
-		}
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// 
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto fitFull ( const r32* _Target, const r32 _Rate = 0.01f ) -> void
-		{
-			this->connect();
-
-			this->opBeg()->reset();
-			this->opEnd()->fit(_Target);
-			this->opBeg()->apply(_Rate);
 		}
 	};
 }

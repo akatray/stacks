@@ -6,12 +6,11 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Imports.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#include <stacks/Op.hpp>
-#include <fx/Simd.hpp>
+#include <stacks/Layer.hpp>
 #include <fx/Rng.hpp>
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Stacks: Neural Networks Toolkit.
+// Neural Networks Experiment.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 namespace sx
 {
@@ -21,85 +20,74 @@ namespace sx
 	using namespace fx;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Local dense operation 2D.
+	// Dense layer.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	template<u64 W, u64 H, u64 R = 1, Func F = Func::RELU> class OpLocal2 : public Op
+	template
+	<
+		class T,
+		u64 SZ_IN,
+		u64 SZ_OUT,
+		FnTrans FN_TRANS = FnTrans::SIGMOID,
+		Optim OPTIM = Optim::ADAM,
+		FnErr FN_ERR = FnErr::MSE
+	>
+	
+	class Dense : public Layer<T>
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Compile time constants.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		constexpr static auto KER_AREA = u64(((R*2)+1)*((R*2)+1));
-		constexpr static auto KER_RDX_MIN = -i64(R);
-		constexpr static auto KER_RDX_MAX = i64(R+1);
+		constexpr static auto SZ_BUF_W = SZ_OUT * SZ_IN;
+		constexpr static auto SZ_BUF_B = SZ_OUT;
 		
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Members.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		alignas(simd::ALIGNMENT) r32 OutTrans[W*H];
-		alignas(simd::ALIGNMENT) r32 OutReal[W*H];
-		alignas(simd::ALIGNMENT) r32 Gradient[W*H];
-		alignas(simd::ALIGNMENT) r32 Weights[W*H*KER_AREA];
-		alignas(simd::ALIGNMENT) r32 WeightsDlt[W*H*KER_AREA];
-
+		alignas(ALIGNMENT) T OutTrans[SZ_OUT];
+		alignas(ALIGNMENT) T OutRaw[SZ_OUT];
+		alignas(ALIGNMENT) T Gradient[SZ_IN];
+		alignas(ALIGNMENT) T Weights[SZ_BUF_W];
+		alignas(ALIGNMENT) T WeightsDlt[SZ_BUF_W];
+		alignas(ALIGNMENT) T WeightsM[SZ_BUF_W];
+		alignas(ALIGNMENT) T WeightsV[SZ_BUF_W];
+		alignas(ALIGNMENT) T Biases[SZ_BUF_B];
+		alignas(ALIGNMENT) T BiasesDlt[SZ_BUF_B];
+		alignas(ALIGNMENT) T BiasesM[SZ_BUF_B];
+		alignas(ALIGNMENT) T BiasesV[SZ_BUF_B];
 		public:
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Explicit constructor.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		OpLocal2 ( const r32 _IntMin = 0.001f, const r32 _IntMax = 0.002f ) : OutTrans{}, OutReal{}, Gradient{}, Weights{}, WeightsDlt{}
+		Dense ( const T _IntMin = 0.001, const T _IntMax = 0.01 ) : OutTrans{}, OutRaw{}, Gradient{}, Weights{}, WeightsDlt{}, WeightsM{}, WeightsV{}, Biases{}, BiasesDlt{}, BiasesM{}, BiasesV{}
 		{
-			if constexpr((W-R*2) < (R*2+1)) static_assert(false, "Kernel does not fit in horizontal space!");
-			if constexpr((H-R*2) < (R*2+1)) static_assert(false, "Kernel does not fit in vertical space!");
-			
-			rng::rbuf(this->Weights, W*H*KER_AREA, _IntMin, _IntMax);
+			rng::rbuf(SZ_BUF_W, this->Weights, _IntMin, _IntMax);
+			rng::rbuf(SZ_BUF_B, this->Biases, _IntMin, _IntMax);
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Virtual destructor.
+		// Trivial functions.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		~OpLocal2 ( void ) final {}
+		~Dense ( void ) final {}
+		constexpr auto outSz ( void ) const -> u64 final { return SZ_OUT; }
+		constexpr auto out ( void ) const -> const T* final { return this->OutTrans; }
+		constexpr auto gradient ( void ) const -> const T* final { return this->Gradient; }
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Trivial.
+		// Execute layer.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		constexpr auto outSz ( void ) const -> u64 final { return W*H; }
-		constexpr auto outBt ( void ) const -> u64 final { return W*H*sizeof(r32); }
-		constexpr auto out ( void ) const -> const r32* final { return this->OutTrans; }
-		constexpr auto gradient ( void ) const -> const r32* final { return this->Gradient; }
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Execute operation.
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto exe ( const r32* _Input ) -> const r32* final
+		auto exe ( void ) -> void final
 		{
-			const auto InputCopy = this->Input;
-			if(_Input) this->Input = _Input;
-
-			
-			for(auto y = u64(R); y < u64(H-R); ++y) { for(auto x = u64(R); x < u64(W-R); ++x)
+			// For each output node.
+			for(auto o = u64(0); o < SZ_OUT; ++o)
 			{
-				const auto o = math::index_c(x, y, W);
-				auto w = u64(0);
-				auto Sum = r32(0.0f);
-
-				for(auto ky = KER_RDX_MIN; ky != KER_RDX_MAX; ++ky) { for(auto kx = KER_RDX_MIN; kx != KER_RDX_MAX; ++kx)
-				{
-					Sum += this->Input[math::index_c(u64(x+kx), u64(y+ky), W)] * this->Weights[math::index_r(o, w, KER_AREA)];
-					++w;
-				}}
-
-				if constexpr(F == Func::SIGMOID) this->OutTrans[o] = math::sigmoid(Sum);
-				if constexpr(F == Func::TANH) this->OutTrans[o] = math::tanh(Sum);
-				if constexpr(F == Func::RELU) this->OutTrans[o] = math::relu(Sum);
-				if constexpr(F == Func::PRELU) this->OutTrans[o] = math::prelu(Sum, 0.1f);
-
-				if constexpr((F == Func::RELU) || (F == Func::PRELU)) this->OutReal[o] = Sum;
-			}}
+				this->OutRaw[o] = vops::mulVecByVecSum(SZ_IN, this->Input, &this->Weights[math::index_c(0, o, SZ_IN)]);
+				this->OutTrans[o] = transfer<T,FN_TRANS>(this->OutRaw[o] + this->Biases[o]) ;
+			}
 
 
-			if(this->Back) this->Input = InputCopy;
-			if(this->Front) return this->Front->exe(nullptr);
-			else return this->out();
+			// Execute next layer.
+			if(this->Front) this->Front->exe();
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -107,91 +95,142 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto reset ( void ) -> void final
 		{
-			if(!this->IsLocked) std::memset(this->WeightsDlt, 0, W*H*KER_AREA*sizeof(r32));
-			std::memset(this->Gradient, 0, W*H*sizeof(r32));
-
+			// Reset only if unlocked.
+			if(!this->IsLocked)
+			{
+				memZero(SZ_BUF_W, this->WeightsDlt);
+				memZero(SZ_BUF_B, this->BiasesDlt);
+			}
+			
+			
+			// Reset next layer.
 			if(this->Front) this->Front->reset();
+		}
+
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Get error in respect to target.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		auto err ( const T* _Target ) -> T final
+		{
+			return error<T,FN_ERR>(SZ_OUT, _Target, this->OutTrans);
 		}
 		
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Fit target.
+		// Backpropagate target through stack.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto fit ( const r32* _Target ) -> void final
+		auto fit ( const T* _Target, const T _Rate, const T _Error ) -> void final
 		{
-			for(auto y = u64(R); y < u64(H-R); ++y) { for(auto x = u64(R); x < u64(W-R); ++x)
+			// Clear gradient.
+			memZero(SZ_IN, this->Gradient);
+
+
+			// For each node.
+			for(auto o = u64(0); o < SZ_OUT; ++o)
 			{
-				const auto o = math::index_c(x, y, W);
-				auto w = u64(0);
-				
-				auto DerOut = r32(0.0f);
-				if(this->Front) DerOut = this->Front->gradient()[o];
-				else DerOut = (this->OutTrans[o] - _Target[o]);
+				// Error derivitive.
+				auto DerErr = T(0.0);
+				if(this->Front) DerErr = this->Front->gradient()[o];
+				else DerErr += errorDer<T,FN_ERR>(_Target[o], this->OutTrans[o]);
 
-				auto DerIn = r32(0.0f);
-				if constexpr(F == Func::SIGMOID) DerIn = math::sigmoidDer2(this->OutTrans[o]) * DerOut;
-				if constexpr(F == Func::TANH) DerIn = math::tanhDer2(this->OutTrans[o]) * DerOut;
-				if constexpr(F == Func::RELU) DerIn = math::reluDer(this->OutReal[o]) * DerOut;
-				if constexpr(F == Func::PRELU) DerIn = math::preluDer(this->OutReal[o], 0.1f) * DerOut;
+				// Transfer derivitive.
+				auto DerTrans = transferDer<T,FN_TRANS>(this->OutTrans[o], this->OutRaw[o]) * DerErr;
 
-				for(auto ky = KER_RDX_MIN; ky != KER_RDX_MAX; ++ky) { for(auto kx = KER_RDX_MIN; kx != KER_RDX_MAX; ++kx)
-				{
-					const auto i = math::index_c(u64(x+kx), u64(y+ky), W);
-					const auto ow = math::index_r(o, w, KER_AREA);
-					
-					if(!this->IsLocked) this->WeightsDlt[ow] += (this->Input[i] * DerIn);
-					this->Gradient[i] += this->Weights[ow] * DerIn;
+				// Update gradient.
+				vops::mulVecByConstAddToOut<T>(SZ_IN, this->Gradient, &this->Weights[math::index_c(0, o, SZ_IN)], DerTrans);
 
-					++w;
-				}}
-			}}
+				// Update weights deltas.
+				vops::mulVecByConstAddToOut<T>(SZ_IN, &this->WeightsDlt[math::index_c(0, o, SZ_IN)], this->Input, DerTrans);
 
-
-			if(this->Back) this->Back->fit(nullptr);
-		}
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Apply deltas.
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto apply ( const r32 _Rate = 0.01f ) -> void final
-		{
-			if(!this->IsLocked)
-			{
-				simd::mulVecByConstSubFromOut(W*H*KER_AREA, this->Weights, this->WeightsDlt, _Rate);
-				
-				/*
-				if constexpr((F == Func::RELU) || (F == Func::PRELU))
-				{
-					simd::mulVecByConstSubFromOut(OW*OH*KER_AREA, this->Weights, this->WeightsDlt, _Rate * 0.01f);
-				}
-
-				else
-				{
-					simd::mulVecByConstSubFromOut(OW*OH*KER_AREA, this->Weights, this->WeightsDlt, _Rate);
-				}
-				*/
+				// Update biases deltas.
+				this->BiasesDlt[o] += DerTrans;
 			}
 
 
+			// Fit backwards.
+			if(this->Back) this->Back->fit(nullptr, _Rate, _Error);
+		}
+
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Apply optimizations and update parameters.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		auto apply ( const r64 _Rate ) -> void final
+		{
+			// Apply only if unlocked.
+			if(!this->IsLocked)
+			{
+				// No optimizations.
+				if constexpr(OPTIM == Optim::NONE)
+				{
+					vops::mulVecByConstSubFromOut(SZ_BUF_W, this->Weights, this->WeightsDlt, _Rate);
+				}
+
+
+				// Momentum.
+				if constexpr(OPTIM == Optim::MOMENTUM)
+				{
+					// For weights.
+					for(auto w = u64(0); w < SZ_BUF_W; ++w)
+					{
+						this->WeightsM[w] = (this->WeightsM[w] * BETA1) + (this->WeightsDlt[w] * BETA1F);
+						this->Weights[w] -= _Rate * this->WeightsM[w];
+					}
+					
+					// For biases.
+					for(auto b = u64(0); b < SZ_BUF_B; ++b)
+					{
+						this->BiasesM[b] = (this->BiasesM[b] * BETA1) + (this->BiasesDlt[b] * BETA1F);
+						this->Biases[b] -= _Rate * this->BiasesM[b];
+					}
+				}
+
+
+				// Adam.
+				if constexpr(OPTIM == Optim::ADAM)
+				{
+					// For weights.
+					for(auto w = u64(0); w < SZ_BUF_W; ++w)
+					{
+						this->WeightsM[w] = (this->WeightsM[w] * BETA1) + (this->WeightsDlt[w] * BETA1F);
+						this->WeightsV[w] = (this->WeightsV[w] * BETA2) + ((this->WeightsDlt[w] * this->WeightsDlt[w]) * BETA2F);
+
+						this->Weights[w] -= _Rate * ((this->WeightsM[w] / BETA1F) / (std::sqrt(this->WeightsV[w] / BETA2F) + EPSILON));
+					}
+
+					// For biases.
+					for(auto b = u64(0); b < SZ_BUF_B; ++b)
+					{
+						this->BiasesM[b] = (this->BiasesM[b] * BETA1) + (this->BiasesDlt[b] * BETA1F);
+						this->BiasesV[b] = (this->BiasesV[b] * BETA2) + ((this->BiasesDlt[b] * this->BiasesDlt[b]) * BETA2F);
+
+						this->Biases[b] -= _Rate * ((this->BiasesM[b] / BETA1F) / (std::sqrt(this->BiasesV[b] / BETA2F) + EPSILON));
+					}
+				}
+			}
+
+
+			// Apply next layer.
 			if(this->Front) this->Front->apply(_Rate);
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Store operation's weights.
+		// Store parameters.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto store ( std::ostream& _Stream ) const -> void final
 		{
-			_Stream.write(reinterpret_cast<const char*>(this->Weights), W*H*KER_AREA*sizeof(r32));
+			_Stream.write(reinterpret_cast<const char*>(this->Weights), SZ_BUF_W * sizeof(T));
+			_Stream.write(reinterpret_cast<const char*>(this->Biases), SZ_BUF_B * sizeof(T));
 			
 			if(this->Front) this->Front->store(_Stream);
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Load operation's weights.
+		// Load parameters.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		auto load ( std::istream& _Stream ) -> void final
 		{
-			_Stream.read(reinterpret_cast<char*>(this->Weights), W*H*KER_AREA*sizeof(r32));
-
+			_Stream.read(reinterpret_cast<char*>(this->Weights), SZ_BUF_W * sizeof(T));
+			_Stream.read(reinterpret_cast<char*>(this->Biases), SZ_BUF_B * sizeof(T));
+			
 			if(this->Front) this->Front->load(_Stream);
 		}
 	};
