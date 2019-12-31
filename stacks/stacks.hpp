@@ -10,14 +10,14 @@
 
 #include "./Layer.hpp"
 #include "./Dense.hpp"
-//#include "./OpLocal2.hpp"
+#include "./Local2.hpp"
 #include "./Conv2.hpp"
 
 //#include "./OpDrop.hpp"
 //#include "./OpNoise.hpp"
 #include "./Scale2.hpp"
 
-#include "./OpNorm.hpp"
+#include "./Effect.hpp"
 
-//#include "./Training.hpp"
+
 

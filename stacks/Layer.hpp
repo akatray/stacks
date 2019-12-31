@@ -9,6 +9,7 @@
 #include <fx/Types.hpp>
 #include "./fn_error.hpp"
 #include "./fn_transfer.hpp"
+#include "./Optimizer.hpp"
 #include "./fn_vector.hpp"
 #include <iostream>
 
@@ -23,24 +24,30 @@ namespace sx
 	using namespace fx;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Optimizer options.
+	// Macros.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	enum class Optim
-	{
-		NONE,
-		MOMENTUM,
-		ADAM,
-	};
+	#define SX_FNSIG_LAYER_EXE auto exe ( void ) -> void
+	#define SX_FNSIG_LAYER_RESET auto reset ( void ) -> void
+	#define SX_FNSIG_LAYER_ERR auto err (const T* _Target) -> T
+	#define SX_FNSIG_LAYER_FIT auto fit ( const T* _Target, const T _Rate, const T _ErrParam ) -> void
+	#define SX_FNSIG_LAYER_APPLY auto apply ( const r64 _Rate ) -> void
+	#define SX_FNSIG_LAYER_STORE auto store ( std::ostream& _Stream ) const -> void
+	#define SX_FNSIG_LAYER_LOAD auto load ( std::istream& _Stream ) -> void
+	
+	
+	#define SX_MC_LAYER_NEXT_EXE if(this->Front) this->Front->exe()
+	#define SX_MC_LAYER_NEXT_RESET if(this->Front) this->Front->reset()
+	#define SX_MC_LAYER_NEXT_FIT if(this->Back) this->Back->fit(nullptr, _Rate, _ErrParam)
+	#define SX_MC_LAYER_NEXT_APPLY if(this->Front) this->Front->apply(_Rate)
+	#define SX_MC_LAYER_NEXT_STORE if(this->Front) this->Front->store(_Stream)
+	#define SX_MC_LAYER_NEXT_LOAD if(this->Front) this->Front->load(_Stream)
+
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Constants.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	constexpr auto ALIGNMENT = u64(32);
-	constexpr auto BETA1 = r64(0.9);
-	constexpr auto BETA1F = r64(1.0) - BETA1;
-	constexpr auto BETA2 = r64(0.99999999);
-	constexpr auto BETA2F = r64(1.0) - BETA2;
-	constexpr auto EPSILON = r64(1e-8);
+
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Layer interface.
@@ -76,13 +83,13 @@ namespace sx
 		virtual auto lock ( void ) -> void { this->IsLocked = true; }
 		virtual auto unlock ( void ) -> void { this->IsLocked = false; }
 
-		virtual auto exe ( void ) -> void = 0;
-		virtual auto reset ( void ) -> void { if(this->Front) this->Front->reset(); }
-		virtual auto err (const T* _Target)-> T { return 0; }
-		virtual auto fit ( const T* _Target, const T _Rate, const T _ErrParam ) -> void = 0;
-		virtual auto apply ( const r64 _Rate ) -> void { if(this->Front) this->Front->apply(_Rate); }
-		virtual auto store ( std::ostream& _Stream ) const -> void { if(this->Front) this->Front->store(_Stream); }
-		virtual auto load ( std::istream& _Stream ) -> void { if(this->Front) this->Front->load(_Stream); }
+		virtual SX_FNSIG_LAYER_EXE = 0;
+		virtual SX_FNSIG_LAYER_RESET { if(this->Front) this->Front->reset(); }
+		virtual SX_FNSIG_LAYER_ERR { return 0; }
+		virtual SX_FNSIG_LAYER_FIT = 0;
+		virtual SX_FNSIG_LAYER_APPLY { if(this->Front) this->Front->apply(_Rate); }
+		virtual SX_FNSIG_LAYER_STORE { if(this->Front) this->Front->store(_Stream); }
+		virtual SX_FNSIG_LAYER_LOAD { if(this->Front) this->Front->load(_Stream); }
 
 		inline auto setInput ( const T* _Input ) -> const T* { const auto InputLast = this->Input; if(_Input) this->Input = _Input; return InputLast; }
 	};

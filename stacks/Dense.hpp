@@ -28,7 +28,7 @@ namespace sx
 		u64 SZ_IN,
 		u64 SZ_OUT,
 		FnTrans FN_TRANS = FnTrans::SIGMOID,
-		Optim OPTIM = Optim::ADAM,
+		FnOptim OPTIM = FnOptim::ADAM,
 		FnErr FN_ERR = FnErr::MSE
 	>
 	
@@ -132,6 +132,8 @@ namespace sx
 				if(this->Front) DerErr = this->Front->gradient()[o];
 				else DerErr += errorDer<T,FN_ERR>(_Target[o], this->OutTrans[o]);
 
+				//DerErr *= _Error;
+
 				// Transfer derivitive.
 				auto DerTrans = transferDer<T,FN_TRANS>(this->OutTrans[o], this->OutRaw[o]) * DerErr;
 
@@ -159,14 +161,14 @@ namespace sx
 			if(!this->IsLocked)
 			{
 				// No optimizations.
-				if constexpr(OPTIM == Optim::NONE)
+				if constexpr(OPTIM == FnOptim::NONE)
 				{
 					vops::mulVecByConstSubFromOut(SZ_BUF_W, this->Weights, this->WeightsDlt, _Rate);
 				}
 
 
 				// Momentum.
-				if constexpr(OPTIM == Optim::MOMENTUM)
+				if constexpr(OPTIM == FnOptim::MOMENTUM)
 				{
 					// For weights.
 					for(auto w = u64(0); w < SZ_BUF_W; ++w)
@@ -185,7 +187,7 @@ namespace sx
 
 
 				// Adam.
-				if constexpr(OPTIM == Optim::ADAM)
+				if constexpr(OPTIM == FnOptim::ADAM)
 				{
 					// For weights.
 					for(auto w = u64(0); w < SZ_BUF_W; ++w)
