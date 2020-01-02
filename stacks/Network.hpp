@@ -7,7 +7,6 @@
 // Imports.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #include "./Layer.hpp"
-#include <fx/Types.hpp>
 #include <vector>
 #include <fstream>
 
@@ -39,13 +38,22 @@ namespace sx
 		// Members.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		const CompClass Mode;
+		const bool AutoDelete;
 		std::vector<ptr> Components;
 		public:
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Constructor.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		Network ( const CompClass _Mode ) : Mode(_Mode), Components() {}
+		Network ( const CompClass _Mode, const bool _AutoDelete = true ) : Mode(_Mode), AutoDelete(_AutoDelete), Components() {}
+
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Destructor.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		~Network ( void )
+		{
+			if(this->AutoDelete) this->freeLayers();
+		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Attach component.
@@ -79,7 +87,7 @@ namespace sx
 			// Connect layers.
 			if(this->Mode == CompClass::LAYERS)
 			{
-				for(auto i = u64(0); i < this->Components.size(); ++i)
+				for(auto i = uMAX(0); i < this->Components.size(); ++i)
 				{
 					if(i == 0) reinterpret_cast<Layer<T>*>(this->Components[i])->setBack(nullptr); // First layer has no back layer.
 					if(i != 0) reinterpret_cast<Layer<T>*>(this->Components[i])->setBack(reinterpret_cast<Layer<T>*>(this->Components[i-1])); // Chain layers.
@@ -91,13 +99,13 @@ namespace sx
 			if(this->Mode == CompClass::NETWORKS)
 			{
 				// Recursively connect subnetworks.
-				for(auto i = u64(0); i < this->Components.size(); ++i)
+				for(auto i = uMAX(0); i < this->Components.size(); ++i)
 				{
 					reinterpret_cast<Network<T>*>(this->Components[i])->connect();
 				}
 
 				// Connect subnetworks tails.
-				for(auto i = u64(0); i < this->Components.size(); ++i)
+				for(auto i = uMAX(0); i < this->Components.size(); ++i)
 				{
 					if(i != 0) reinterpret_cast<Network<T>*>(this->Components[i])->front()->setBack(reinterpret_cast<Network<T>*>(this->Components[i-1])->back());
 				}
@@ -114,10 +122,10 @@ namespace sx
 		auto freeLayers ( void ) -> void
 		{
 			// Delete containing layers.
-			if(this->Mode == CompClass::LAYERS) for(auto i = u64(0); i < this->Components.size(); ++i) delete reinterpret_cast<Layer<T>*>(this->Components[i]);
+			if(this->Mode == CompClass::LAYERS) for(auto i = uMAX(0); i < this->Components.size(); ++i) delete reinterpret_cast<Layer<T>*>(this->Components[i]);
 
 			// Forwards request to subnetworks.
-			if(this->Mode == CompClass::NETWORKS) for(auto i = u64(0); i < this->Components.size(); ++i) reinterpret_cast<Network<T>*>(this->Components[i])->freeLayers();
+			if(this->Mode == CompClass::NETWORKS) for(auto i = uMAX(0); i < this->Components.size(); ++i) reinterpret_cast<Network<T>*>(this->Components[i])->freeLayers();
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -126,10 +134,10 @@ namespace sx
 		auto lock ( void ) -> void
 		{
 			// Lock containing layers.
-			if(this->Mode == CompClass::LAYERS) for(auto i = u64(0); i < this->Components.size(); ++i) reinterpret_cast<Layer<T>*>(this->Components[i])->lock();
+			if(this->Mode == CompClass::LAYERS) for(auto i = uMAX(0); i < this->Components.size(); ++i) reinterpret_cast<Layer<T>*>(this->Components[i])->lock();
 
 			// Forwards request to subnetworks.
-			if(this->Mode == CompClass::NETWORKS) for(auto i = u64(0); i < this->Components.size(); ++i) reinterpret_cast<Network<T>*>(this->Components[i])->lock();
+			if(this->Mode == CompClass::NETWORKS) for(auto i = uMAX(0); i < this->Components.size(); ++i) reinterpret_cast<Network<T>*>(this->Components[i])->lock();
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -138,10 +146,10 @@ namespace sx
 		auto unlock ( void ) -> void
 		{
 			// Unlock containing layers.
-			if(this->Mode == CompClass::LAYERS) for(auto i = u64(0); i < this->Components.size(); ++i) reinterpret_cast<Layer<T>*>(this->Components[i])->unlock();
+			if(this->Mode == CompClass::LAYERS) for(auto i = uMAX(0); i < this->Components.size(); ++i) reinterpret_cast<Layer<T>*>(this->Components[i])->unlock();
 
 			// Forwards request to subnetworks.
-			if(this->Mode == CompClass::NETWORKS) for(auto i = u64(0); i < this->Components.size(); ++i) reinterpret_cast<Network<T>*>(this->Components[i])->unlock();
+			if(this->Mode == CompClass::NETWORKS) for(auto i = uMAX(0); i < this->Components.size(); ++i) reinterpret_cast<Network<T>*>(this->Components[i])->unlock();
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------

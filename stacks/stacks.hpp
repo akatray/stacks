@@ -4,20 +4,26 @@
 #pragma once
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Constants.
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+namespace sx
+{
+	constexpr auto VERSION_MAJOR = int(5);
+	constexpr auto VERSION_MINOR = int(0);
+	constexpr auto VERSION_PATCH = int(0);
+	constexpr auto ALIGNMENT = int(32);
+}
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Imports.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#include "./Model.hpp"
+#include <fx/Types.hpp>
+#include <fx/Rng.hpp>
+#include <fx/Math.hpp>
+#include <fx/Vops.hpp>
+
+#include "./Network.hpp"
 
 #include "./Layer.hpp"
-#include "./Dense.hpp"
-#include "./Local2.hpp"
-#include "./Conv2.hpp"
-
-//#include "./OpDrop.hpp"
-//#include "./OpNoise.hpp"
-#include "./Scale2.hpp"
-
-#include "./Effect.hpp"
-
-
-
+#include "./layer/Dense.hpp"
+#include "./layer/Effect.hpp"

@@ -4,13 +4,6 @@
 #pragma once
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Imports.
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#include <fx/Types.hpp>
-#include <fx/Math.hpp>
-#include <cmath>
-
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Neural Networks Experiment.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 namespace sx
@@ -25,45 +18,27 @@ namespace sx
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	enum class FnErr
 	{
-		MSE,
-		CROSSENTROPY,
-		HELLINGER
+		MSE
 	};
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Calculate error.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	template<class T, FnErr FN_ERR> constexpr inline auto error ( const u64 _Size, const T* _Real, const T* _Predicted )
+	template<class T, FnErr FN_ERR> constexpr inline auto error ( const uMAX _Size, const T* _Real, const T* _Predicted )
 	{
 		if constexpr(FN_ERR == FnErr::MSE)
 		{
 			auto Sum = T(0.0);
-			for(auto i = u64(0); i < _Size; ++i) Sum += math::sqr(_Predicted[i] - _Real[i]);
+			for(auto i = uMAX(0); i < _Size; ++i) Sum += math::sqr(_Predicted[i] - _Real[i]);
 			return Sum / _Size;
-		}
-
-		if constexpr(FN_ERR == FnErr::CROSSENTROPY)
-		{
-			auto Sum = T(0.0);
-			for(auto i = u64(0); i < _Size; ++i) Sum += (_Real[i] * std::log(_Predicted[i])) + (T(1.0) - _Real[i]) * std::log(T(1.0) - _Predicted[i]);
-			return -Sum;
-		}
-
-		if constexpr(FN_ERR == FnErr::HELLINGER)
-		{
-			auto Sum = T(0.0);
-			for(auto i = u64(0); i < _Size; ++i) Sum += math::sqr(std::sqrt(_Predicted[i]) - std::sqrt(_Real[i]));
-			return Sum * (T(1.0) / std::sqrt(T(2.0)));
 		}
 	}
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Error derivitive,
+	// Error derivitive.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	template<class T, FnErr FN_ERR> constexpr inline auto errorDer (const T _Real, const T _Predicted)
 	{
 		if constexpr(FN_ERR == FnErr::MSE) return (_Predicted - _Real) * 2;
-		if constexpr(FN_ERR == FnErr::CROSSENTROPY) return (_Predicted - _Real) / ((T(1.0) - _Predicted) * _Predicted);
-		if constexpr(FN_ERR == FnErr::HELLINGER) return (std::sqrt(_Predicted) - std::sqrt(_Real)) / (std::sqrt(T(2.0)) * std::sqrt(_Predicted));
 	}
 }

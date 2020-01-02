@@ -6,11 +6,14 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Imports.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#include <fx/Types.hpp>
-#include "./fn_error.hpp"
-#include "./fn_transfer.hpp"
+#include "./Error.hpp"
+#include "./Transfer.hpp"
 #include "./Optimizer.hpp"
-#include "./fn_vector.hpp"
+
+#include "./layer/data/Outputs.hpp"
+#include "./layer/data/Weights.hpp"
+#include "./layer/data/Biases.hpp"
+
 #include <iostream>
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -26,6 +29,11 @@ namespace sx
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Macros.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Function signatures.
+	#define SX_FNSIG_LAYER_OUTSZ auto outSz ( void ) const -> u64
+	#define SX_FNSIG_LAYER_OUTSZBT auto outSzBt ( void ) const -> u64
+	#define SX_FNSIG_LAYER_OUT auto out ( void ) const -> const T*
+	#define SX_FNSIG_LAYER_GRAD auto gradient ( void ) const -> const T*
 	#define SX_FNSIG_LAYER_EXE auto exe ( void ) -> void
 	#define SX_FNSIG_LAYER_RESET auto reset ( void ) -> void
 	#define SX_FNSIG_LAYER_ERR auto err (const T* _Target) -> T
@@ -34,7 +42,7 @@ namespace sx
 	#define SX_FNSIG_LAYER_STORE auto store ( std::ostream& _Stream ) const -> void
 	#define SX_FNSIG_LAYER_LOAD auto load ( std::istream& _Stream ) -> void
 	
-	
+	// Macros for chained function calls.
 	#define SX_MC_LAYER_NEXT_EXE if(this->Front) this->Front->exe()
 	#define SX_MC_LAYER_NEXT_RESET if(this->Front) this->Front->reset()
 	#define SX_MC_LAYER_NEXT_FIT if(this->Back) this->Back->fit(nullptr, _Rate, _ErrParam)
@@ -42,13 +50,13 @@ namespace sx
 	#define SX_MC_LAYER_NEXT_STORE if(this->Front) this->Front->store(_Stream)
 	#define SX_MC_LAYER_NEXT_LOAD if(this->Front) this->Front->load(_Stream)
 
+	// Generate code for trivial functions.
+	#define SX_MC_LAYER_TRIVIAL(CLASS_NAME, SZ_OUT, PTR_OUT, PTR_GRAD) ~CLASS_NAME ( void ) final {} constexpr SX_FNSIG_LAYER_OUTSZ final { return SZ_OUT; } constexpr SX_FNSIG_LAYER_OUTSZBT final { return SZ_OUT * sizeof(T); } constexpr SX_FNSIG_LAYER_OUT final { return PTR_OUT; } constexpr SX_FNSIG_LAYER_GRAD final { return PTR_GRAD; }
 
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Constants.
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	constexpr auto ALIGNMENT = u64(32);
-
-
+	// Generate code common derivatives.
+	#define SX_MC_LAYER_DER_ERR auto DerErr = T(0); if(this->Front) DerErr = this->Front->gradient()[o]; else DerErr += errorDer<T,FN_ERR>(_Target[o], this->OutTrans[o])
+	#define SX_MC_LAYER_DER_TRANS auto ValRaw = T(); if constexpr(needRaw<T,FN_TRANS>()) ValRaw = this->OutRaw[o]; auto DerTrans = transferDer<T,FN_TRANS>(this->OutTrans[o], ValRaw) * DerErr
+	
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Layer interface.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -70,27 +78,26 @@ namespace sx
 		Layer ( void ) : Front(nullptr), Back(nullptr), Input(nullptr), IsLocked(false) {}
 		virtual ~Layer ( void ) {}
 
-		virtual auto outSz ( void ) const -> u64 { return 0; }
-		virtual auto outSzBt ( void ) const -> u64 { return this->outSz() * sizeof(T); }
-		virtual auto in ( void ) const -> const T* { return this->Input; }
-		virtual auto out ( void ) const -> const T* { return nullptr; }
-		virtual auto gradient ( void ) const -> const T* { return nullptr; }
-		virtual auto back ( void ) -> Layer* { return this->Back; }
-		virtual auto front ( void ) -> Layer* { return this->Front; }
-		virtual auto setBack ( Layer* _Back ) -> void { this->Back = _Back; if(_Back) { this->Input = _Back->out(); _Back->setFront(this); } }
-		virtual auto setFront ( Layer* _Front ) -> void { this->Front = _Front; }
-
-		virtual auto lock ( void ) -> void { this->IsLocked = true; }
-		virtual auto unlock ( void ) -> void { this->IsLocked = false; }
+		virtual SX_FNSIG_LAYER_OUTSZ = 0;
+		virtual SX_FNSIG_LAYER_OUTSZBT = 0;
+		virtual SX_FNSIG_LAYER_OUT = 0;
+		virtual SX_FNSIG_LAYER_GRAD = 0;
 
 		virtual SX_FNSIG_LAYER_EXE = 0;
-		virtual SX_FNSIG_LAYER_RESET { if(this->Front) this->Front->reset(); }
-		virtual SX_FNSIG_LAYER_ERR { return 0; }
 		virtual SX_FNSIG_LAYER_FIT = 0;
+
+		virtual SX_FNSIG_LAYER_ERR { return 0; }
+		virtual SX_FNSIG_LAYER_RESET { if(this->Front) this->Front->reset(); }
 		virtual SX_FNSIG_LAYER_APPLY { if(this->Front) this->Front->apply(_Rate); }
 		virtual SX_FNSIG_LAYER_STORE { if(this->Front) this->Front->store(_Stream); }
 		virtual SX_FNSIG_LAYER_LOAD { if(this->Front) this->Front->load(_Stream); }
 
+		inline auto lock ( void ) -> void { this->IsLocked = true; }
+		inline auto unlock ( void ) -> void { this->IsLocked = false; }
+		inline auto back ( void ) -> Layer* { return this->Back; }
+		inline auto front ( void ) -> Layer* { return this->Front; }
+		inline auto setBack ( Layer* _Back ) -> void { this->Back = _Back; if(_Back) { this->Input = _Back->out(); _Back->setFront(this); } }
+		inline auto setFront ( Layer* _Front ) -> void { this->Front = _Front; }
 		inline auto setInput ( const T* _Input ) -> const T* { const auto InputLast = this->Input; if(_Input) this->Input = _Input; return InputLast; }
 	};
 }
