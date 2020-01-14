@@ -30,32 +30,32 @@ namespace sx
 	// Macros.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Function signatures.
-	#define SX_FNSIG_LAYER_OUTSZ auto outSz ( void ) const -> u64
-	#define SX_FNSIG_LAYER_OUTSZBT auto outSzBt ( void ) const -> u64
+	#define SX_FNSIG_LAYER_OUTSZ auto outSz ( void ) const -> uMAX
+	#define SX_FNSIG_LAYER_OUTSZBT auto outSzBt ( void ) const -> uMAX
 	#define SX_FNSIG_LAYER_OUT auto out ( void ) const -> const T*
 	#define SX_FNSIG_LAYER_GRAD auto gradient ( void ) const -> const T*
-	#define SX_FNSIG_LAYER_EXE auto exe ( void ) -> void
-	#define SX_FNSIG_LAYER_RESET auto reset ( void ) -> void
-	#define SX_FNSIG_LAYER_ERR auto err (const T* _Target) -> T
-	#define SX_FNSIG_LAYER_FIT auto fit ( const T* _Target, const T _Rate, const T _ErrParam ) -> void
-	#define SX_FNSIG_LAYER_APPLY auto apply ( const r64 _Rate ) -> void
-	#define SX_FNSIG_LAYER_STORE auto store ( std::ostream& _Stream ) const -> void
-	#define SX_FNSIG_LAYER_LOAD auto load ( std::istream& _Stream ) -> void
+	#define SX_FNSIG_LAYER_EXE auto exe ( const bool _Chain = true ) -> void
+	#define SX_FNSIG_LAYER_RESET auto reset ( const bool _Chain = true ) -> void
+	#define SX_FNSIG_LAYER_ERR auto err ( const T* _Target ) -> T
+	#define SX_FNSIG_LAYER_FIT auto fit ( const T* _Target, const rMAX _ErrParam, const bool _Chain = true ) -> void
+	#define SX_FNSIG_LAYER_APPLY auto apply ( const rMAX _Rate, const bool _Chain = true ) -> void
+	#define SX_FNSIG_LAYER_STORE auto store ( std::ostream& _Stream, const bool _Chain = true ) const -> void
+	#define SX_FNSIG_LAYER_LOAD auto load ( std::istream& _Stream, const bool _Chain = true ) -> void
 	
 	// Macros for chained function calls.
-	#define SX_MC_LAYER_NEXT_EXE if(this->Front) this->Front->exe()
-	#define SX_MC_LAYER_NEXT_RESET if(this->Front) this->Front->reset()
-	#define SX_MC_LAYER_NEXT_FIT if(this->Back) this->Back->fit(nullptr, _Rate, _ErrParam)
-	#define SX_MC_LAYER_NEXT_APPLY if(this->Front) this->Front->apply(_Rate)
-	#define SX_MC_LAYER_NEXT_STORE if(this->Front) this->Front->store(_Stream)
-	#define SX_MC_LAYER_NEXT_LOAD if(this->Front) this->Front->load(_Stream)
+	#define SX_MC_LAYER_NEXT_EXE if(this->Front && _Chain) this->Front->exe()
+	#define SX_MC_LAYER_NEXT_RESET if(this->Front && _Chain) this->Front->reset()
+	#define SX_MC_LAYER_NEXT_FIT if(this->Back && _Chain) this->Back->fit(nullptr, _ErrParam)
+	#define SX_MC_LAYER_NEXT_APPLY if(this->Front && _Chain) this->Front->apply(_Rate)
+	#define SX_MC_LAYER_NEXT_STORE if(this->Front && _Chain) this->Front->store(_Stream)
+	#define SX_MC_LAYER_NEXT_LOAD if(this->Front && _Chain) this->Front->load(_Stream)
 
 	// Generate code for trivial functions.
-	#define SX_MC_LAYER_TRIVIAL(CLASS_NAME, SZ_OUT, PTR_OUT, PTR_GRAD) ~CLASS_NAME ( void ) final {} constexpr SX_FNSIG_LAYER_OUTSZ final { return SZ_OUT; } constexpr SX_FNSIG_LAYER_OUTSZBT final { return SZ_OUT * sizeof(T); } constexpr SX_FNSIG_LAYER_OUT final { return PTR_OUT; } constexpr SX_FNSIG_LAYER_GRAD final { return PTR_GRAD; }
+	#define SX_MC_LAYER_TRIVIAL(CLASS_NAME, SZ_OUT, PTR_OUT, PTR_GRAD) public: ~CLASS_NAME ( void ) final {} constexpr SX_FNSIG_LAYER_OUTSZ final { return SZ_OUT; } constexpr SX_FNSIG_LAYER_OUTSZBT final { return SZ_OUT * sizeof(T); } constexpr SX_FNSIG_LAYER_OUT final { return PTR_OUT; } constexpr SX_FNSIG_LAYER_GRAD final { return PTR_GRAD; }
 
 	// Generate code common derivatives.
 	#define SX_MC_LAYER_DER_ERR auto DerErr = T(0); if(this->Front) DerErr = this->Front->gradient()[o]; else DerErr += errorDer<T,FN_ERR>(_Target[o], this->OutTrans[o])
-	#define SX_MC_LAYER_DER_TRANS auto ValRaw = T(); if constexpr(needRaw<T,FN_TRANS>()) ValRaw = this->OutRaw[o]; auto DerTrans = transferDer<T,FN_TRANS>(this->OutTrans[o], ValRaw) * DerErr
+	#define SX_MC_LAYER_DER_TRANS auto ValRaw = T(); if constexpr(needRaw<T,FN_TRANS>()) ValRaw = this->OutRaw[o]; auto DerTrans = transferDer<T,FN_TRANS>(this->OutTrans[o], ValRaw) * DerErr; DerTrans = std::clamp(DerTrans, T(-1), T(1))
 	
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Layer interface.

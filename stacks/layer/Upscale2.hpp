@@ -19,54 +19,57 @@ namespace sx
 	using namespace fx;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Dense layer.
+	// Upscale layer 2d.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	template
 	<
 		class T,
-		uMAX SZ_IN,
-		uMAX SZ_OUT,
-		FnTrans FN_TRANS = FnTrans::PRELU,
-		FnOptim FN_OPTIM = FnOptim::ADAM,
+		uMAX WIDTH_IN,
+		uMAX HEIGHT_IN,
+		uMAX DEPTH_IN,
 		FnErr FN_ERR = FnErr::MSE
 	>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	class Dense :
+	class Upscale2 :
 		public Layer<T>,
-		LDOutputs<T, SZ_OUT, SZ_IN, needRaw<T,FN_TRANS>()>,
-		LDWeights<T, SZ_IN * SZ_OUT, SZ_IN, SZ_OUT, needBufM<T,FN_OPTIM>(), needBufV<T,FN_OPTIM>()>,
-		LDBiases<T, SZ_OUT, SZ_IN, SZ_OUT, needBufM<T,FN_OPTIM>(), needBufV<T,FN_OPTIM>()>
+		LDOutputs<T, (WIDTH_IN * 2) * (HEIGHT_IN * 2) * DEPTH_IN, WIDTH_IN * HEIGHT_IN * DEPTH_IN, false>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Compile time constants.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		constexpr static auto SZ_BUF_W = SZ_OUT * SZ_IN;
-		constexpr static auto SZ_BUF_B = SZ_OUT;
+		constexpr static auto WIDTH_OUT = WIDTH_IN * 2;
+		constexpr static auto HEIGHT_OUT = HEIGHT_IN * 2;
+		constexpr static auto SZ_IN = WIDTH_IN * HEIGHT_IN * DEPTH_IN;
+		constexpr static auto SZ_OUT = WIDTH_OUT * HEIGHT_OUT * DEPTH_IN;
 		
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Generated functions.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		SX_MC_LAYER_TRIVIAL(Dense, SZ_OUT, this->OutTrans, this->Gradient)
+		SX_MC_LAYER_TRIVIAL(Upscale2, SZ_OUT, this->OutTrans, this->Gradient)
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Execute layer.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_EXE final
 		{
-			for(auto o = uMAX(0); o < SZ_OUT; ++o)
+			auto ox = uMAX(0);
+			auto oy = uMAX(0);
+
+			for(auto iy = uMAX(0); iy < HEIGHT_IN; ++iy) { for(auto ix = uMAX(0); ix < WIDTH_IN; ++ix)
 			{
-				if constexpr(needRaw<T,FN_TRANS>())
+				for(auto d = u64(0); d < DEPTH_IN; ++d)
 				{
-					this->OutRaw[o] = std::inner_product(this->Input, this->Input + SZ_IN, this->Weights + math::index_c(0, o, SZ_IN), T(0)) + this->Biases[o];
-					this->OutTrans[o] = transfer<T,FN_TRANS>(this->OutRaw[o]);
+					const auto Value = this->Input[math::index_c(ix, iy, d, WIDTH_IN, HEIGHT_IN)];
+
+					this->OutTrans[math::index_c(ox, oy, d, WIDTH_OUT, HEIGHT_OUT)] = Value;
+					this->OutTrans[math::index_c(ox + uMAX(1), oy, d, WIDTH_OUT, HEIGHT_OUT)] = Value;
+					this->OutTrans[math::index_c(ox, oy + uMAX(1), d, WIDTH_OUT, HEIGHT_OUT)] = Value;
+					this->OutTrans[math::index_c(ox + uMAX(1), oy + uMAX(1), d, WIDTH_OUT, HEIGHT_OUT)] = Value;
 				}
 
-				else
-				{
-					this->OutTrans[o] = transfer<T,FN_TRANS>(std::inner_product(this->Input, this->Input + SZ_IN, this->Weights + math::index_c(0, o, SZ_IN), T(0)) + this->Biases[o]);
-				}
-			}
+				ox += uMAX(2); if(ox >= WIDTH_OUT) { ox = uMAX(0); oy += uMAX(2); }
+			}}
 
 			SX_MC_LAYER_NEXT_EXE;
 		}
@@ -76,17 +79,44 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_FIT final
 		{
-			memZero(SZ_IN, this->Gradient);
-
-			for(auto o = uMAX(0); o < SZ_OUT; ++o)
+			auto ox = uMAX(0);
+			auto oy = uMAX(0);
+				
+			for(auto iy = uMAX(0); iy < HEIGHT_IN; ++iy) { for(auto ix = uMAX(0); ix < WIDTH_IN; ++ix)
 			{
-				SX_MC_LAYER_DER_ERR;
-				SX_MC_LAYER_DER_TRANS;
+				for(auto d = uMAX(0); d < DEPTH_IN; ++d)
+				{
+					uMAX o[4];
+					o[0] = math::index_c(ox, oy, d, WIDTH_OUT, HEIGHT_OUT);
+					o[1] = math::index_c(ox + uMAX(1), oy, d, WIDTH_OUT, HEIGHT_OUT);
+					o[2] = math::index_c(ox, oy + uMAX(1), d, WIDTH_OUT, HEIGHT_OUT);
+					o[3] = math::index_c(ox + uMAX(1), oy + uMAX(1), d, WIDTH_OUT, HEIGHT_OUT);
 
-				vops::mulVecByConstAddToOut(SZ_IN, this->Gradient, &this->Weights[math::index_c(0, o, SZ_IN)], DerTrans);
-				vops::mulVecByConstAddToOut(SZ_IN, &this->WeightsDlt[math::index_c(0, o, SZ_IN)], this->Input, DerTrans);
-				this->BiasesDlt[o] += DerTrans;
-			}
+
+					T DerErr[4];
+					
+					if(this->Front)
+					{
+						DerErr[0] = this->Front->gradient()[o[0]];
+						DerErr[1] = this->Front->gradient()[o[1]];
+						DerErr[2] = this->Front->gradient()[o[2]];
+						DerErr[3] = this->Front->gradient()[o[3]];
+					}
+					
+					else
+					{
+						DerErr[0] = errorDer<T,FN_ERR>(_Target[o[0]], this->OutTrans[o[0]]);
+						DerErr[1] = errorDer<T,FN_ERR>(_Target[o[1]], this->OutTrans[o[1]]);
+						DerErr[2] = errorDer<T,FN_ERR>(_Target[o[2]], this->OutTrans[o[2]]);
+						DerErr[3] = errorDer<T,FN_ERR>(_Target[o[3]], this->OutTrans[o[3]]);
+					}
+
+
+					this->Gradient[math::index_c(ix, iy, d, WIDTH_IN, HEIGHT_IN)] = (DerErr[0] + DerErr[1] + DerErr[2] + DerErr[3]);
+				}
+
+				ox += uMAX(2); if(ox >= WIDTH_OUT) { ox = uMAX(0); oy += uMAX(2); }
+			}}
 
 			SX_MC_LAYER_NEXT_FIT;
 		}
@@ -95,25 +125,5 @@ namespace sx
 		// Get error between target and output.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		#include "./data/ComImplErr.hpp"
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Reset deltas.
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplReset.hpp"
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Apply optimizations and update parameters.
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplApply.hpp"
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Store parameters.
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplStore.hpp"
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Load parameters.
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplLoad.hpp"
 	};
 }

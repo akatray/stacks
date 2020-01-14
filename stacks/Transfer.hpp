@@ -22,13 +22,15 @@ namespace sx
 		SIGMOID,
 		TANH,
 		RELU,
-		PRELU
+		PRELU,
+
+		TEST
 	};
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Logistic / sigmoid.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	template<class T> inline auto sigmoid (const T _X) { return (T(1.0) / (T(1.0) + std::pow(math::EULER, -_X))); }
+	template<class T> inline auto sigmoid (const T _X) { return (T(1.0) / (T(1.0) + std::exp(-_X))); }
 	template<class T> inline auto sigmoidDer (const T _X) { return (sigmoid(_X) * (T(1.0) - sigmoid(_X))); }
 	template<class T> constexpr inline auto sigmoidDer2 (const T _FX) { return (_FX * (T(1.0) - _FX)); }
 
@@ -55,7 +57,7 @@ namespace sx
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	template<class T, FnTrans FN_TRANS> constexpr inline auto needRaw ( void )
 	{
-		if constexpr((FN_TRANS == FnTrans::RELU) || (FN_TRANS == FnTrans::PRELU)) return true;
+		if constexpr((FN_TRANS == FnTrans::RELU) || (FN_TRANS == FnTrans::PRELU) || (FN_TRANS == FnTrans::TEST)) return true;
 		else return false;
 	}
 
@@ -69,6 +71,8 @@ namespace sx
 		if constexpr(FN_TRANS == FnTrans::TANH) return tanh(_Val);
 		if constexpr(FN_TRANS == FnTrans::RELU) return relu(_Val);
 		if constexpr(FN_TRANS == FnTrans::PRELU) return prelu(_Val, T(0.01));
+
+		if constexpr(FN_TRANS == FnTrans::TEST) return (T(1.0) / (T(0.1) + std::pow(math::EULER, -_Val))); 
 	}
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -81,5 +85,7 @@ namespace sx
 		if constexpr(FN_TRANS == FnTrans::TANH) return tanhDer2(_TVal);
 		if constexpr(FN_TRANS == FnTrans::RELU) return reluDer(_RVal);
 		if constexpr(FN_TRANS == FnTrans::PRELU) return preluDer(_RVal, T(0.01));
+
+		if constexpr(FN_TRANS == FnTrans::TEST) return (std::exp(_RVal) * T(100)) / math::sqr(std::exp(_RVal) + 10);
 	}
 }

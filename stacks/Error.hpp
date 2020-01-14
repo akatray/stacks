@@ -18,7 +18,9 @@ namespace sx
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	enum class FnErr
 	{
-		MSE
+		MSE, // Mean square error.
+		MAE, // Mean absolute error.
+		BCE // Binary cross entropy.
 	};
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -28,9 +30,47 @@ namespace sx
 	{
 		if constexpr(FN_ERR == FnErr::MSE)
 		{
-			auto Sum = T(0.0);
-			for(auto i = uMAX(0); i < _Size; ++i) Sum += math::sqr(_Predicted[i] - _Real[i]);
-			return Sum / _Size;
+			return std::transform_reduce
+			(
+				_Predicted,
+				_Predicted + _Size,
+				_Real,
+				T(0),
+				[&]( T _Sum, T _Item ) { return _Sum + _Item; },
+				[&](  T _P, T _R ) { return math::sqr(_P - _R); }
+			) / _Size;
+		}
+
+		if constexpr(FN_ERR == FnErr::MAE)
+		{
+			return std::transform_reduce
+			(
+				_Predicted,
+				_Predicted + _Size,
+				_Real,
+				T(0),
+				[&]( T _Sum, T _Item ) { return _Sum + _Item; },
+				[&]( T _P, T _R ) { return std::abs(_P - _R); }
+			) / _Size;
+		}
+
+		if constexpr(FN_ERR == FnErr::BCE)
+		{
+			constexpr auto Eps = T(1e-15);
+			
+			return std::transform_reduce
+			(
+				_Predicted,
+				_Predicted + _Size,
+				_Real,
+				T(0),
+				[&]( T _Sum, T _Item ) { return _Sum + _Item; },
+				[&]( T _P, T _R )
+				{
+					const auto P = std::clamp(_P, Eps, T(1));
+					return (_R * std::log(P) + (T(1) - _R) * std::log((T(1) - P) + Eps));
+				}
+			) / _Size * -1;
 		}
 	}
 
@@ -39,6 +79,8 @@ namespace sx
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	template<class T, FnErr FN_ERR> constexpr inline auto errorDer (const T _Real, const T _Predicted)
 	{
-		if constexpr(FN_ERR == FnErr::MSE) return (_Predicted - _Real) * 2;
+		if constexpr(FN_ERR == FnErr::MSE) return (_Predicted - _Real) * T(2);
+		if constexpr(FN_ERR == FnErr::MAE) return (_Predicted - _Real) / std::abs(_Predicted - _Real);
+		if constexpr(FN_ERR == FnErr::BCE) return (_Predicted - _Real) / std::max((T(1) - _Predicted) * _Predicted, T(1e-15));
 	}
 }

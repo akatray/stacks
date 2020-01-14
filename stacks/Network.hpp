@@ -163,7 +163,7 @@ namespace sx
 		auto exe ( const T* _Input, const bool _Connect = true ) -> void { if(_Connect) this->connect(); this->front()->setInput(_Input); this->front()->exe(); }
 		auto reset ( const bool _Connect = true ) -> void { if(_Connect) this->connect(); this->front()->reset(); }
 		auto err ( const T* _Target, const bool _Connect = true ) -> T { if(_Connect) this->connect(); return this->back()->err(_Target); }
-		auto fit ( const T* _Target, const T _Rate, const T _ErrParam, const bool _Connect = true ) -> void { if(_Connect) this->connect(); return this->back()->fit(_Target, _Rate, _ErrParam); }
+		auto fit ( const T* _Target, const T _ErrParam, const bool _Connect = true ) -> void { if(_Connect) this->connect(); return this->back()->fit(_Target, _ErrParam); }
 		auto apply ( const T _Rate, const bool _Connect = true ) -> void { if(_Connect) this->connect(); return this->front()->apply(_Rate); }
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------

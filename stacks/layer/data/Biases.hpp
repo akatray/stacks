@@ -16,43 +16,37 @@ namespace sx
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Layer data: Biases buffers.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	template<class T, uMAX SIZE, bool HAS_BUF_M = true, bool HAS_BUF_V = true>
+	template<class T, uMAX SZ_BUF, uMAX SZ_IN, uMAX SZ_OUT, bool HAS_BUF_M = true, bool HAS_BUF_V = true>
 	struct LDBiases
 	{
-		alignas(ALIGNMENT) T Biases[SIZE];
-		alignas(ALIGNMENT) T BiasesDlt[SIZE];
-		alignas(ALIGNMENT) T BiasesDltM[SIZE];
-		alignas(ALIGNMENT) T BiasesDltV[SIZE];
+		alignas(ALIGNMENT) T Biases[SZ_BUF];
+		alignas(ALIGNMENT) T BiasesDlt[SZ_BUF];
+		alignas(ALIGNMENT) T BiasesDltM[SZ_BUF];
+		alignas(ALIGNMENT) T BiasesDltV[SZ_BUF];
 
-		LDBiases ( void ) : Biases{}, BiasesDlt{}, BiasesDltM{}, BiasesDltV{} { rng::rbuf(SIZE, this->Biases, 0.0001, 0.001); }
+		LDBiases ( void ) : Biases{}, BiasesDlt{}, BiasesDltM{}, BiasesDltV{} { rng::rbuf_nrm(SZ_BUF, this->Biases, T(0), T(1)); }
 	};
 
-	template<class T, uMAX SIZE>
-	struct LDBiases<T, SIZE, false, false>
-	{
-		alignas(ALIGNMENT) T Biases[SIZE];
-		alignas(ALIGNMENT) T BiasesDlt[SIZE];
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-		LDBiases ( void ) : Biases{}, BiasesDlt{} { rng::rbuf(SIZE, this->Biases, 0.0001, 0.001); }
+	template<class T, uMAX SZ_BUF, uMAX SZ_IN, uMAX SZ_OUT>
+	struct LDBiases<T, SZ_BUF, SZ_IN, SZ_OUT, false, false>
+	{
+		alignas(ALIGNMENT) T Biases[SZ_BUF];
+		alignas(ALIGNMENT) T BiasesDlt[SZ_BUF];
+
+		LDBiases ( void ) : Biases{}, BiasesDlt{} { rng::rbuf_nrm(SZ_BUF, this->Biases, T(0), T(1)); }
 	};
 
-	template<class T, uMAX SIZE>
-	struct LDBiases<T, SIZE, true, false>
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+	template<class T, uMAX SZ_BUF, uMAX SZ_IN, uMAX SZ_OUT>
+	struct LDBiases<T, SZ_BUF, SZ_IN, SZ_OUT, true, false>
 	{
-		alignas(ALIGNMENT) T Biases[SIZE];
-		alignas(ALIGNMENT) T BiasesDlt[SIZE];
-		alignas(ALIGNMENT) T BiasesDltM[SIZE];
+		alignas(ALIGNMENT) T Biases[SZ_BUF];
+		alignas(ALIGNMENT) T BiasesDlt[SZ_BUF];
+		alignas(ALIGNMENT) T BiasesDltM[SZ_BUF];
 
-		LDBiases ( void ) : Biases{}, BiasesDlt{}, BiasesDltM{} { rng::rbuf(SIZE, this->Biases, 0.0001, 0.001); }
-	};
-
-	template<class T, uMAX SIZE>
-	struct LDBiases<T, SIZE, false, true>
-	{
-		alignas(ALIGNMENT) T Biases[SIZE];
-		alignas(ALIGNMENT) T BiasesDlt[SIZE];
-		alignas(ALIGNMENT) T BiasesDltV[SIZE];
-
-		LDBiases ( void ) : Biases{}, BiasesDlt{}, BiasesDltV{} { rng::rbuf(SIZE, this->Biases, 0.0001, 0.001); }
+		LDBiases ( void ) : Biases{}, BiasesDlt{}, BiasesDltM{} { rng::rbuf_nrm(SZ_BUF, this->Biases, T(0), T(1)); }
 	};
 }

@@ -7,6 +7,7 @@
 // Imports.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #include "./../Layer.hpp"
+#include "./Dense.hpp"
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Neural Networks Experiment.
@@ -19,54 +20,68 @@ namespace sx
 	using namespace fx;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Dense layer.
+	// Layer for variational autoencoder.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	template
 	<
 		class T,
 		uMAX SZ_IN,
 		uMAX SZ_OUT,
-		FnTrans FN_TRANS = FnTrans::PRELU,
+		uMAX PRIORITY = 10,
 		FnOptim FN_OPTIM = FnOptim::ADAM,
 		FnErr FN_ERR = FnErr::MSE
 	>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	class Dense :
+	class Variation :
 		public Layer<T>,
-		LDOutputs<T, SZ_OUT, SZ_IN, needRaw<T,FN_TRANS>()>,
-		LDWeights<T, SZ_IN * SZ_OUT, SZ_IN, SZ_OUT, needBufM<T,FN_OPTIM>(), needBufV<T,FN_OPTIM>()>,
-		LDBiases<T, SZ_OUT, SZ_IN, SZ_OUT, needBufM<T,FN_OPTIM>(), needBufV<T,FN_OPTIM>()>
+		LDOutputs<T, SZ_OUT, SZ_IN*2, false>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Compile time constants.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		constexpr static auto SZ_BUF_W = SZ_OUT * SZ_IN;
-		constexpr static auto SZ_BUF_B = SZ_OUT;
-		
+		constexpr static auto LATENT_PRIORITY = T(1) / PRIORITY;
+
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Members.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		Dense<T, SZ_IN, SZ_OUT*2, FnTrans::LINEAR, FN_OPTIM, FN_ERR> MeanDev;
+		T NormalSample[SZ_OUT];
+
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Generated functions.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		SX_MC_LAYER_TRIVIAL(Dense, SZ_OUT, this->OutTrans, this->Gradient)
+		SX_MC_LAYER_TRIVIAL(Variation, SZ_OUT, this->OutTrans, this->Gradient)
+
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Constructor.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		Variation ( void ) : MeanDev(), NormalSample{} {rng::rbuf_nrm(SZ_OUT, NormalSample, T(0), T(1));}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Execute layer.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_EXE final
 		{
-			for(auto o = uMAX(0); o < SZ_OUT; ++o)
+			if(this->Back)
 			{
-				if constexpr(needRaw<T,FN_TRANS>())
-				{
-					this->OutRaw[o] = std::inner_product(this->Input, this->Input + SZ_IN, this->Weights + math::index_c(0, o, SZ_IN), T(0)) + this->Biases[o];
-					this->OutTrans[o] = transfer<T,FN_TRANS>(this->OutRaw[o]);
-				}
-
-				else
-				{
-					this->OutTrans[o] = transfer<T,FN_TRANS>(std::inner_product(this->Input, this->Input + SZ_IN, this->Weights + math::index_c(0, o, SZ_IN), T(0)) + this->Biases[o]);
-				}
+				this->MeanDev.setBack(this->Back);
+				this->MeanDev.setFront(nullptr);
+				this->MeanDev.exe(false);
 			}
+
+			else
+			{
+				this->MeanDev.setInput(this->Input);
+				this->MeanDev.exe(false);
+			}
+
+			this->setBack(this->Back);
+
+
+			rng::rbuf_nrm(SZ_OUT, NormalSample, T(0), T(1));
+			for(auto o = uMAX(0); o < SZ_OUT; ++o) this->OutTrans[o] = this->MeanDev.out()[o] + this->MeanDev.out()[o + SZ_OUT] * NormalSample[o];
+
 
 			SX_MC_LAYER_NEXT_EXE;
 		}
@@ -76,44 +91,107 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_FIT final
 		{
-			memZero(SZ_IN, this->Gradient);
-
 			for(auto o = uMAX(0); o < SZ_OUT; ++o)
 			{
-				SX_MC_LAYER_DER_ERR;
-				SX_MC_LAYER_DER_TRANS;
+				auto e = math::sqr(this->MeanDev.out()[o]) + std::exp(this->MeanDev.out()[o + SZ_OUT]) - this->MeanDev.out()[o + SZ_OUT] - T(1);
 
-				vops::mulVecByConstAddToOut(SZ_IN, this->Gradient, &this->Weights[math::index_c(0, o, SZ_IN)], DerTrans);
-				vops::mulVecByConstAddToOut(SZ_IN, &this->WeightsDlt[math::index_c(0, o, SZ_IN)], this->Input, DerTrans);
-				this->BiasesDlt[o] += DerTrans;
+				auto DerErrMean = T(0);
+				auto DerErrDev = T(0);
+
+				if(e > T(0.0))
+				{
+					DerErrMean = this->MeanDev.out()[o] * T(2);
+					DerErrDev = std::exp(this->MeanDev.out()[o + SZ_OUT]) - T(1);
+				}
+
+
+				const auto DerErrMeanRec = this->Front->gradient()[o];
+				const auto DerErrDevRec = this->Front->gradient()[o] * this->NormalSample[o];
+
+				this->Gradient[o] = std::lerp(DerErrMean, DerErrMeanRec, LATENT_PRIORITY);
+				this->Gradient[o+SZ_OUT] = std::lerp(DerErrDev, DerErrDevRec, LATENT_PRIORITY);
+
 			}
 
-			SX_MC_LAYER_NEXT_FIT;
+
+			if(this->Back)
+			{
+				this->MeanDev.setFront(this);
+				this->MeanDev.setBack(this->Back);
+				this->Back->setFront(&this->MeanDev);
+			}
+
+			else
+			{
+				this->MeanDev.setFront(this);
+				this->MeanDev.setInput(this->Input);
+			}
+
+			this->MeanDev.fit(nullptr, _ErrParam, true);
+
+
+			//this->Back->setFront(this);
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Get error between target and output.
+		// Get KL loss.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplErr.hpp"
+		SX_FNSIG_LAYER_ERR final
+		{
+			auto Dkl = T(0);
+
+			for(auto o = uMAX(0); o < SZ_OUT; ++o)
+			{
+				Dkl +=  math::sqr(this->MeanDev.out()[o]) + std::exp(this->MeanDev.out()[o + SZ_OUT]) - this->MeanDev.out()[o + SZ_OUT] - T(1);
+			}
+
+			return Dkl * T(0.5);
+		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Reset deltas.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplReset.hpp"
+		SX_FNSIG_LAYER_RESET final
+		{
+			if(!this->IsLocked)
+			{
+				this->MeanDev.reset(false);
+			}
+			
+			SX_MC_LAYER_NEXT_RESET;
+		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Apply optimizations and update parameters.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplApply.hpp"
+		SX_FNSIG_LAYER_APPLY final
+		{
+			if(!this->IsLocked)
+			{
+				this->MeanDev.apply(_Rate, false);
+			}
+
+			SX_MC_LAYER_NEXT_APPLY;
+		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Store parameters.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplStore.hpp"
+		SX_FNSIG_LAYER_STORE final
+		{
+			this->MeanDev.store(_Stream, false);
+
+			SX_MC_LAYER_NEXT_STORE;
+		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Load parameters.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplLoad.hpp"
+		SX_FNSIG_LAYER_LOAD final
+		{
+			this->MeanDev.load(_Stream, false);
+
+			SX_MC_LAYER_NEXT_LOAD;
+		}
 	};
 }
