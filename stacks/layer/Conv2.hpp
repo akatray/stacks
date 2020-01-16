@@ -19,87 +19,77 @@ namespace sx
 	using namespace fx;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Effects options.
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	enum class Effect
-	{
-		NORMALIZE
-	};
-
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Effect data: Normalize.
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	template<class T> struct EDNormalize
-	{
-		alignas(ALIGNMENT) T Mean;
-		alignas(ALIGNMENT) T Deviation;
-
-		alignas(ALIGNMENT) T Alpha;
-		alignas(ALIGNMENT) T DltAlpha;
-		alignas(ALIGNMENT) T DltMAlpha;
-		alignas(ALIGNMENT) T DltVAlpha;
-
-		alignas(ALIGNMENT) T Beta;
-		alignas(ALIGNMENT) T DltBeta;
-		alignas(ALIGNMENT) T DltMBeta;
-		alignas(ALIGNMENT) T DltVBeta;
-
-		EDNormalize ( void ) :
-			Mean(),
-			Deviation(),
-			
-			Alpha(rng::rnum_nrm<T>()),
-			DltAlpha(),
-			DltMAlpha(),
-			DltVAlpha(),
-
-			Beta(rng::rnum_nrm<T>()),
-			DltBeta(),
-			DltMBeta(),
-			DltVBeta(){}
-	};
-
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Apply effect on input data.
+	// Convolutional layer 2d.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	template
 	<
 		class T,
-		Effect EFFECT,
-		uMAX SZ_IN,
+		uMAX WIDTH_IN,
+		uMAX HEIGHT_IN,
+		uMAX DEPTH_IN,
+		uMAX KERNELS = 1,
+		uMAX RADIUS = 1,
+		FnTrans FN_TRANS = FnTrans::PRELU,
 		FnOptim FN_OPTIM = FnOptim::MOMENTUM,
 		FnErr FN_ERR = FnErr::MSE
 	>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	class Filter :
+	class Conv2 :
 		public Layer<T>,
-		LDOutputs<T, SZ_IN, SZ_IN, false>,
-		std::conditional_t<EFFECT == Effect::NORMALIZE, EDNormalize<T>, Nothing>
+		LDOutputs<T, WIDTH_IN * HEIGHT_IN * KERNELS, WIDTH_IN * HEIGHT_IN * DEPTH_IN, true>,
+		LDWeights<T, uMAX(((RADIUS*2)+1)*((RADIUS*2)+1)) * KERNELS * DEPTH_IN, 0, 0, needBufM<T,FN_OPTIM>(), needBufV<T,FN_OPTIM>()>,
+		LDBiases<T, WIDTH_IN * HEIGHT_IN * KERNELS, 0, 0, needBufM<T,FN_OPTIM>(), needBufV<T,FN_OPTIM>()>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Compile time constants.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		constexpr static auto SZ_OUT = SZ_IN;
+		constexpr static auto SZ_KER_EDGE = uMAX(RADIUS * 2 + 1);
+		constexpr static auto SZ_KER = SZ_KER_EDGE * SZ_KER_EDGE;
+		constexpr static auto SZ_KER_RDX_MIN = -iMAX(RADIUS);
+		constexpr static auto SZ_KER_RDX_MAX = iMAX(RADIUS + 1);
 
+		constexpr static auto SZ_BUF_W = SZ_KER * KERNELS * DEPTH_IN;
+		constexpr static auto SZ_BUF_B = WIDTH_IN * HEIGHT_IN * KERNELS;
+		constexpr static auto SZ_IN = WIDTH_IN * HEIGHT_IN * DEPTH_IN;
+		constexpr static auto SZ_OUT = WIDTH_IN * HEIGHT_IN * KERNELS;
+		
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Generated functions.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		SX_MC_LAYER_TRIVIAL(Filter, SZ_IN, this->OutTrans, this->Gradient)
+		SX_MC_LAYER_TRIVIAL(Conv2, SZ_OUT, this->OutTrans, this->Gradient)
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Execute layer.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_EXE final
 		{
-			if constexpr(EFFECT == Effect::NORMALIZE)
+			memZero(SZ_OUT, this->OutRaw);
+
+			for(auto k = uMAX(0); k < KERNELS; ++k) { for(auto d = u64(0); d < DEPTH_IN; ++d) { for(auto y = RADIUS; y < (HEIGHT_IN - RADIUS); ++y)
 			{
-				this->Mean = math::mean(SZ_IN, this->Input);
-				this->Deviation = std::sqrt(math::sqr(math::stddev(SZ_IN, this->Input, this->Mean)) + T(1e-5));
-				
-				for(auto o = uMAX(0); o < SZ_IN; ++o) this->OutTrans[o] = this->Alpha * ((this->Input[o] - this->Mean) / this->Deviation) + this->Beta;
-			}
-			
+				auto ky = SZ_KER_RDX_MIN;
+				auto wo = uMAX(0);
+				for(auto kr = uMAX(0); kr < SZ_KER_EDGE; ++kr)
+				{
+					for(auto x = RADIUS; x < (WIDTH_IN - RADIUS); ++x)
+					{
+						const auto o = math::index_c(x, y, k, WIDTH_IN, HEIGHT_IN);
+						auto w = wo;
+						for(auto kx = SZ_KER_RDX_MIN; kx != SZ_KER_RDX_MAX; ++kx)
+						{
+							this->OutRaw[o] += this->Input[math::index_c(x+kx, y+ky, d, WIDTH_IN, HEIGHT_IN)] * this->Weights[math::index_c(w, k, SZ_KER)];
+							++w;
+						}
+					}
+
+					ky += 1;
+					wo += SZ_KER_EDGE;
+				}
+			}}}
+
+			for(auto o = uMAX(0); o < SZ_OUT; ++o) this->OutTrans[o] = transfer<T,FN_TRANS>(this->OutRaw[o] + this->Biases[o]);
+
 			SX_MC_LAYER_NEXT_EXE;
 		}
 
@@ -108,21 +98,39 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_FIT final
 		{
-			for(auto o = uMAX(0); o < SZ_IN; ++o)
+			memZero(SZ_IN, this->Gradient);
+
+			for(auto k = uMAX(0); k < KERNELS; ++k) { for(auto d = u64(0); d < DEPTH_IN; ++d) { for(auto y = RADIUS; y < (HEIGHT_IN - RADIUS); ++y)
 			{
-				SX_MC_LAYER_DER_ERR;
-
-				if constexpr(EFFECT == Effect::NORMALIZE)
+				auto ky = SZ_KER_RDX_MIN;
+				auto wo = uMAX(0);
+				for(auto kr = uMAX(0); kr < SZ_KER_EDGE; ++kr)
 				{
-					this->DltAlpha += ((this->Input[o] - this->Mean) / this->Deviation) * DerErr;
-					this->DltBeta += DerErr;
-					
-					DerErr *= this->Alpha / this->Deviation;
-				}
+					for(auto x = RADIUS; x < (WIDTH_IN - RADIUS); ++x)
+					{
+						const auto o = math::index_c(x, y, k, WIDTH_IN, HEIGHT_IN);
+						SX_MC_LAYER_DER_ERR;
+						SX_MC_LAYER_DER_TRANS;
+						auto w = wo;
+						for(auto kx = SZ_KER_RDX_MIN; kx != SZ_KER_RDX_MAX; ++kx)
+						{
+							const auto i = math::index_c(x+kx, y+ky, d, WIDTH_IN, HEIGHT_IN);
+							const auto ow = math::index_c(w, k, SZ_KER);
+							
+							if(!this->IsLocked) this->WeightsDlt[ow] += (this->Input[i] * DerTrans);
+							this->Gradient[i] += (this->Weights[ow] * DerTrans);
+							
+							++w;
+						}
 
-				this->Gradient[o] = DerErr;
-			}
-		
+						this->BiasesDlt[o] += DerTrans;
+					}
+
+					ky += 1;
+					wo += SZ_KER_EDGE;
+				}
+			}}}
+
 			SX_MC_LAYER_NEXT_FIT;
 		}
 
@@ -134,63 +142,21 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Reset deltas.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		SX_FNSIG_LAYER_RESET final
-		{
-			if(!this->IsLocked)
-			{
-				if constexpr(EFFECT == Effect::NORMALIZE)
-				{
-					this->DltAlpha = T(0);
-					this->DltBeta = T(0);
-				}
-			}
-
-			SX_MC_LAYER_NEXT_RESET;
-		}
+		#include "./data/ComImplReset.hpp"
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Apply optimizations and update parameters.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		SX_FNSIG_LAYER_APPLY final
-		{
-			if(!this->IsLocked)
-			{
-				if constexpr(EFFECT == Effect::NORMALIZE)
-				{
-					optimApply<T,FN_OPTIM>(_Rate, 1, &this->Alpha, &this->DltAlpha, &this->DltMAlpha, &this->DltVAlpha);
-					optimApply<T,FN_OPTIM>(_Rate, 1, &this->Beta, &this->DltBeta, &this->DltMBeta, &this->DltVBeta);
-				}
-			}
-
-			SX_MC_LAYER_NEXT_APPLY;
-		}
+		#include "./data/ComImplApply.hpp"
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Store parameters.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		SX_FNSIG_LAYER_STORE final
-		{
-			if constexpr(EFFECT == Effect::NORMALIZE)
-			{
-				_Stream.write(reinterpret_cast<const char*>(&this->Alpha), sizeof(T));
-				_Stream.write(reinterpret_cast<const char*>(&this->Beta), sizeof(T));
-			}
-			
-			SX_MC_LAYER_NEXT_STORE;
-		}
+		#include "./data/ComImplStore.hpp"
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Load parameters.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		SX_FNSIG_LAYER_LOAD final
-		{
-			if constexpr(EFFECT == Effect::NORMALIZE)
-			{
-				_Stream.read(reinterpret_cast<char*>(&this->Alpha), sizeof(T));
-				_Stream.read(reinterpret_cast<char*>(&this->Beta), sizeof(T));
-			}
-
-			SX_MC_LAYER_NEXT_LOAD;
-		}
+		#include "./data/ComImplLoad.hpp"
 	};
 }

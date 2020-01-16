@@ -27,7 +27,7 @@ namespace sx
 		uMAX SZ_IN,
 		uMAX SZ_OUT,
 		FnTrans FN_TRANS = FnTrans::PRELU,
-		FnOptim FN_OPTIM = FnOptim::ADAM,
+		FnOptim FN_OPTIM = FnOptim::MOMENTUM,
 		FnErr FN_ERR = FnErr::MSE
 	>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------

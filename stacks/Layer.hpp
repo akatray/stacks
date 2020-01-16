@@ -27,6 +27,11 @@ namespace sx
 	using namespace fx;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Nothing.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	struct Nothing {};
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Macros.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Function signatures.
@@ -96,6 +101,8 @@ namespace sx
 		inline auto unlock ( void ) -> void { this->IsLocked = false; }
 		inline auto back ( void ) -> Layer* { return this->Back; }
 		inline auto front ( void ) -> Layer* { return this->Front; }
+		inline auto back ( void ) const -> const Layer* { return this->Back; }
+		inline auto front ( void ) const -> const Layer* { return this->Front; }
 		inline auto setBack ( Layer* _Back ) -> void { this->Back = _Back; if(_Back) { this->Input = _Back->out(); _Back->setFront(this); } }
 		inline auto setFront ( Layer* _Front ) -> void { this->Front = _Front; }
 		inline auto setInput ( const T* _Input ) -> const T* { const auto InputLast = this->Input; if(_Input) this->Input = _Input; return InputLast; }

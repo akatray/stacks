@@ -27,26 +27,26 @@ namespace sx
 		class T,
 		uMAX SZ_IN,
 		uMAX SZ_OUT,
-		uMAX PRIORITY = 10,
-		FnOptim FN_OPTIM = FnOptim::ADAM,
+		uMAX PRIORITY = 1,
+		FnOptim FN_OPTIM = FnOptim::MOMENTUM,
 		FnErr FN_ERR = FnErr::MSE
 	>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	class Variation :
 		public Layer<T>,
-		LDOutputs<T, SZ_OUT, SZ_IN*2, false>
+		LDOutputs<T, SZ_OUT, SZ_IN * 2, false>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Compile time constants.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		constexpr static auto LATENT_PRIORITY = T(1) / PRIORITY;
+		constexpr static auto GRADIENT_SUPPRESS = T(1) / PRIORITY;
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Members.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		Dense<T, SZ_IN, SZ_OUT*2, FnTrans::LINEAR, FN_OPTIM, FN_ERR> MeanDev;
-		T NormalSample[SZ_OUT];
+		Dense<T, SZ_IN, SZ_OUT * 2, FnTrans::LINEAR, FN_OPTIM, FN_ERR> MeanDev;
+		alignas(ALIGNMENT) T NormalSample[SZ_OUT];
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Generated functions.
@@ -56,7 +56,7 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Constructor.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		Variation ( void ) : MeanDev(), NormalSample{} {rng::rbuf_nrm(SZ_OUT, NormalSample, T(0), T(1));}
+		Variation ( void ) : MeanDev(), NormalSample{} {}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Execute layer.
@@ -100,17 +100,15 @@ namespace sx
 
 				if(e > T(0.0))
 				{
-					DerErrMean = this->MeanDev.out()[o] * T(2);
-					DerErrDev = std::exp(this->MeanDev.out()[o + SZ_OUT]) - T(1);
+					DerErrMean = (this->MeanDev.out()[o] * T(2)) ;
+					DerErrDev = (std::exp(this->MeanDev.out()[o + SZ_OUT]) - T(1)) ;
 				}
 
+				const auto DerErrMeanRec = this->Front->gradient()[o] * GRADIENT_SUPPRESS;
+				const auto DerErrDevRec = this->Front->gradient()[o] * this->NormalSample[o] * GRADIENT_SUPPRESS;
 
-				const auto DerErrMeanRec = this->Front->gradient()[o];
-				const auto DerErrDevRec = this->Front->gradient()[o] * this->NormalSample[o];
-
-				this->Gradient[o] = std::lerp(DerErrMean, DerErrMeanRec, LATENT_PRIORITY);
-				this->Gradient[o+SZ_OUT] = std::lerp(DerErrDev, DerErrDevRec, LATENT_PRIORITY);
-
+				this->Gradient[o] = DerErrMeanRec + DerErrMean;
+				this->Gradient[o+SZ_OUT] = DerErrDevRec + DerErrDev;
 			}
 
 
@@ -128,9 +126,6 @@ namespace sx
 			}
 
 			this->MeanDev.fit(nullptr, _ErrParam, true);
-
-
-			//this->Back->setFront(this);
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -180,7 +175,6 @@ namespace sx
 		SX_FNSIG_LAYER_STORE final
 		{
 			this->MeanDev.store(_Stream, false);
-
 			SX_MC_LAYER_NEXT_STORE;
 		}
 
@@ -190,7 +184,6 @@ namespace sx
 		SX_FNSIG_LAYER_LOAD final
 		{
 			this->MeanDev.load(_Stream, false);
-
 			SX_MC_LAYER_NEXT_LOAD;
 		}
 	};

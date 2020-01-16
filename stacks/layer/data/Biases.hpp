@@ -14,6 +14,11 @@ namespace sx
 	using namespace fx;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Macros.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	#define SX_MC_BIASES_INIT rng::rbuf(SZ_BUF, this->Biases, T(-0.001), T(0.001));
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Layer data: Biases buffers.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	template<class T, uMAX SZ_BUF, uMAX SZ_IN, uMAX SZ_OUT, bool HAS_BUF_M = true, bool HAS_BUF_V = true>
@@ -24,7 +29,7 @@ namespace sx
 		alignas(ALIGNMENT) T BiasesDltM[SZ_BUF];
 		alignas(ALIGNMENT) T BiasesDltV[SZ_BUF];
 
-		LDBiases ( void ) : Biases{}, BiasesDlt{}, BiasesDltM{}, BiasesDltV{} { rng::rbuf_nrm(SZ_BUF, this->Biases, T(0), T(1)); }
+		LDBiases ( void ) : Biases{}, BiasesDlt{}, BiasesDltM{}, BiasesDltV{} { SX_MC_BIASES_INIT }
 	};
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -35,7 +40,7 @@ namespace sx
 		alignas(ALIGNMENT) T Biases[SZ_BUF];
 		alignas(ALIGNMENT) T BiasesDlt[SZ_BUF];
 
-		LDBiases ( void ) : Biases{}, BiasesDlt{} { rng::rbuf_nrm(SZ_BUF, this->Biases, T(0), T(1)); }
+		LDBiases ( void ) : Biases{}, BiasesDlt{} { SX_MC_BIASES_INIT }
 	};
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -47,6 +52,6 @@ namespace sx
 		alignas(ALIGNMENT) T BiasesDlt[SZ_BUF];
 		alignas(ALIGNMENT) T BiasesDltM[SZ_BUF];
 
-		LDBiases ( void ) : Biases{}, BiasesDlt{}, BiasesDltM{} { rng::rbuf_nrm(SZ_BUF, this->Biases, T(0), T(1)); }
+		LDBiases ( void ) : Biases{}, BiasesDlt{}, BiasesDltM{} { SX_MC_BIASES_INIT }
 	};
 }

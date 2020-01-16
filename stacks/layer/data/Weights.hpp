@@ -14,6 +14,13 @@ namespace sx
 	using namespace fx;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Macros.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	#define SX_MC_WEIGHT_INIT rng::rbuf(SZ_BUF, this->Weights, T(-0.001), T(0.001));
+	//#define SX_MC_WEIGHT_INIT rng::rbuf_nrm(SZ_BUF, this->Weights, T(0), T(1)); for(auto w = uMAX(0); w < SZ_BUF; ++w) this->Weights[w] += T(0.0000001);
+	//#define SX_MC_WEIGHT_INIT rng::rbuf(SZ_BUF, this->Weights, -std::sqrt(T(6) / (T(SZ_IN), T(SZ_OUT))), std::sqrt(T(6) / (T(SZ_IN), T(SZ_OUT))));
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Layer data: Weights buffers.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	template<class T, uMAX SZ_BUF, uMAX SZ_IN, uMAX SZ_OUT, bool HAS_BUF_M = true, bool HAS_BUF_V = true>
@@ -24,7 +31,7 @@ namespace sx
 		alignas(ALIGNMENT) T WeightsDltM[SZ_BUF];
 		alignas(ALIGNMENT) T WeightsDltV[SZ_BUF];
 
-		LDWeights ( void ) : Weights{}, WeightsDlt{}, WeightsDltM{}, WeightsDltV{} { rng::rbuf(SZ_BUF, this->Weights, -std::sqrt(T(6) / (T(SZ_IN), T(SZ_OUT))), std::sqrt(T(6) / (T(SZ_IN), T(SZ_OUT)))); }
+		LDWeights ( void ) : Weights{}, WeightsDlt{}, WeightsDltM{}, WeightsDltV{} { SX_MC_WEIGHT_INIT }
 	};
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -35,7 +42,7 @@ namespace sx
 		alignas(ALIGNMENT) T Weights[SZ_BUF];
 		alignas(ALIGNMENT) T WeightsDlt[SZ_BUF];
 
-		LDWeights ( void ) : Weights{}, WeightsDlt{} { rng::rbuf(SZ_BUF, this->Weights, -std::sqrt(T(6) / (T(SZ_IN), T(SZ_OUT))), std::sqrt(T(6) / (T(SZ_IN), T(SZ_OUT)))); }
+		LDWeights ( void ) : Weights{}, WeightsDlt{} { SX_MC_WEIGHT_INIT }
 	};
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -47,6 +54,6 @@ namespace sx
 		alignas(ALIGNMENT) T WeightsDlt[SZ_BUF];
 		alignas(ALIGNMENT) T WeightsDltM[SZ_BUF];
 
-		LDWeights ( void ) : Weights{}, WeightsDlt{}, WeightsDltM{} { rng::rbuf(SZ_BUF, this->Weights, -std::sqrt(T(6) / (T(SZ_IN), T(SZ_OUT))), std::sqrt(T(6) / (T(SZ_IN), T(SZ_OUT)))); }
+		LDWeights ( void ) : Weights{}, WeightsDlt{}, WeightsDltM{} { SX_MC_WEIGHT_INIT }
 	};
 }
