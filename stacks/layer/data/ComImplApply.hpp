@@ -2,26 +2,13 @@
 		{
 			if(!this->IsLocked)
 			{
-				auto PtrWDM = (T*)nullptr;
-				auto PtrWDV = (T*)nullptr;
-				auto PtrBDM = (T*)nullptr;
-				auto PtrBDV = (T*)nullptr;
-
-				if constexpr(needBufM<T,FN_OPTIM>())
-				{
-					PtrWDM = this->WeightsDltM;
-					PtrBDM = this->BiasesDltM;
-				}
-
-				if constexpr(needBufV<T,FN_OPTIM>())
-				{
-					PtrWDV = this->WeightsDltV;
-					PtrBDV = this->BiasesDltV;
-				}
-
-
-				optimApply<T,FN_OPTIM>(_Rate, SZ_BUF_W, this->Weights, this->WeightsDlt, PtrWDM, PtrWDV);
-				optimApply<T,FN_OPTIM>(_Rate, SZ_BUF_B, this->Biases, this->BiasesDlt, PtrBDM, PtrBDV);
+				if constexpr(!needBufM<T,FN_OPTIM>() && !needBufV<T,FN_OPTIM>()) optimApply<T,FN_OPTIM>(_Rate, SZ_BUF_W, this->Weights, this->WeightsDlt, nullptr, nullptr);
+				if constexpr(needBufM<T,FN_OPTIM>() && !needBufV<T,FN_OPTIM>()) optimApply<T,FN_OPTIM>(_Rate, SZ_BUF_W, this->Weights, this->WeightsDlt, this->WeightsDltM, nullptr);
+				if constexpr(needBufM<T,FN_OPTIM>() && needBufV<T,FN_OPTIM>()) optimApply<T,FN_OPTIM>(_Rate, SZ_BUF_W, this->Weights, this->WeightsDlt, this->WeightsDltM, this->WeightsDltV);
+				
+				if constexpr(!needBufM<T,FN_OPTIM>() && !needBufV<T,FN_OPTIM>()) optimApply<T,FN_OPTIM>(_Rate, SZ_BUF_B, this->Biases, this->BiasesDlt, nullptr, nullptr);
+				if constexpr(needBufM<T,FN_OPTIM>() && !needBufV<T,FN_OPTIM>()) optimApply<T,FN_OPTIM>(_Rate, SZ_BUF_B, this->Biases, this->BiasesDlt, this->BiasesDltM, nullptr);
+				if constexpr(needBufM<T,FN_OPTIM>() && needBufV<T,FN_OPTIM>()) optimApply<T,FN_OPTIM>(_Rate, SZ_BUF_B, this->Biases, this->BiasesDlt, this->BiasesDltM, this->BiasesDltV);
 			}
 
 			SX_MC_LAYER_NEXT_APPLY;
