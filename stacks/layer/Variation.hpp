@@ -93,6 +93,7 @@ namespace sx
 		{
 			for(auto o = uMAX(0); o < SZ_OUT; ++o)
 			{
+				auto et = this->err(nullptr);
 				auto e = math::sqr(this->MeanDev.out()[o]) + std::exp(this->MeanDev.out()[o + SZ_OUT]) - this->MeanDev.out()[o + SZ_OUT] - T(1);
 
 				auto DerErrMean = T(0);
@@ -104,8 +105,11 @@ namespace sx
 					DerErrDev = (std::exp(this->MeanDev.out()[o + SZ_OUT]) - T(1)) ;
 				}
 
-				const auto DerErrMeanRec = this->Front->gradient()[o] * GRADIENT_SUPPRESS;
-				const auto DerErrDevRec = this->Front->gradient()[o] * this->NormalSample[o] * GRADIENT_SUPPRESS;
+				//const auto DerErrMeanRec = this->Front->gradient()[o];
+				//const auto DerErrDevRec = this->Front->gradient()[o] * this->NormalSample[o];
+
+				const auto DerErrMeanRec = this->Front->gradient()[o] * std::lerp(T(1), T(0), std::clamp(et*5, T(0), T(0.9)));
+				const auto DerErrDevRec = this->Front->gradient()[o] * this->NormalSample[o] * std::lerp(T(1), T(0), std::clamp(et*5, T(0), T(0.9)));
 
 				this->Gradient[o] = DerErrMeanRec + DerErrMean;
 				this->Gradient[o+SZ_OUT] = DerErrDevRec + DerErrDev;
@@ -163,7 +167,7 @@ namespace sx
 		{
 			if(!this->IsLocked)
 			{
-				this->MeanDev.apply(_Rate, false);
+				this->MeanDev.apply(_Rate, _Iter, false);
 			}
 
 			SX_MC_LAYER_NEXT_APPLY;

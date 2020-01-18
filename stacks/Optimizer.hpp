@@ -62,6 +62,7 @@ namespace sx
 	auto optimApply
 	(
 		const T _Rate,
+		const uMAX _Iter,
 		
 		const u64 _Size,
 		T* _Buff,
@@ -72,26 +73,36 @@ namespace sx
 	)
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
-		if constexpr(FN_OPTIM == FnOptim::NONE) vops::mulVecByConstSubFromOut(_Size, _Buff, _BuffD, _Rate);
+		if constexpr(FN_OPTIM == FnOptim::NONE)
+		{
+			for(auto i = uMAX(0); i < _Size; ++i)
+			{
+				_Buff[i] -= _Rate * _BuffD[i];
+			}
+		}
 			
-
 		if constexpr(FN_OPTIM == FnOptim::MOMENTUM)
 		{
-			for(auto i = u64(0); i < _Size; ++i)
+			for(auto i = uMAX(0); i < _Size; ++i)
 			{
-				_BuffM[i] = (_BuffM[i] * BETA1) + (_BuffD[i] * BETA1F);
+				_BuffM[i] = (_BuffD[i] * BETA1F) + (_BuffM[i] * BETA1);
 				_Buff[i] -= _Rate * _BuffM[i];
 			}
 		}
 
-
 		if constexpr(FN_OPTIM == FnOptim::ADAM)
 		{
-			for(auto i = u64(0); i < _Size; ++i)
+			const auto Iter = _Iter + 1;
+			
+			for(auto i = uMAX(0); i < _Size; ++i)
 			{
-				_BuffM[i] = (_BuffM[i] * BETA1) + (_BuffD[i] * BETA1F);
-				_BuffV[i] = (_BuffV[i] * BETA2) + ((_BuffD[i] * _BuffD[i]) * BETA2F);
-				_Buff[i] -= _Rate * ((_BuffM[i] / BETA1F) / (std::sqrt(_BuffV[i] / BETA2F) + EPSILON));
+				_BuffM[i] = (BETA1 * _BuffM[i]) + (BETA1F * _BuffD[i]);
+				_BuffV[i] = (BETA2 * _BuffV[i]) + (BETA2F * math::sqr(_BuffD[i]));
+				
+				const auto m = _BuffM[i] / (T(1) - std::pow(BETA1, Iter));
+				const auto v = _BuffV[i] / (T(1) - std::pow(BETA2, Iter));
+
+				_Buff[i] -= _Rate * m / std::sqrt(v) + EPSILON;
 			}
 		}
 	}

@@ -9,7 +9,7 @@
 namespace sx
 {
 	constexpr auto VERSION_MAJOR = int(5);
-	constexpr auto VERSION_MINOR = int(2);
+	constexpr auto VERSION_MINOR = int(3);
 	constexpr auto VERSION_PATCH = int(0);
 	constexpr auto ALIGNMENT = int(32);
 }

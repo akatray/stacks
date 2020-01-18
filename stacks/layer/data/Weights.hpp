@@ -16,7 +16,7 @@ namespace sx
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Macros.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	#define SX_MC_WEIGHT_INIT rng::rbuf(SZ_BUF, this->Weights, T(-0.001), T(0.001));
+	#define SX_MC_WEIGHT_INIT rng::rbuf(SZ_BUF, this->Weights, T(0.0001), T(0.001));
 	//#define SX_MC_WEIGHT_INIT rng::rbuf_nrm(SZ_BUF, this->Weights, T(0), T(1)); for(auto w = uMAX(0); w < SZ_BUF; ++w) this->Weights[w] += T(0.0000001);
 	//#define SX_MC_WEIGHT_INIT rng::rbuf(SZ_BUF, this->Weights, -std::sqrt(T(6) / (T(SZ_IN), T(SZ_OUT))), std::sqrt(T(6) / (T(SZ_IN), T(SZ_OUT))));
 

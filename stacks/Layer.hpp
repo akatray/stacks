@@ -43,7 +43,7 @@ namespace sx
 	#define SX_FNSIG_LAYER_RESET auto reset ( const bool _Chain = true ) -> void
 	#define SX_FNSIG_LAYER_ERR auto err ( const T* _Target ) -> T
 	#define SX_FNSIG_LAYER_FIT auto fit ( const T* _Target, const rMAX _ErrParam, const bool _Chain = true ) -> void
-	#define SX_FNSIG_LAYER_APPLY auto apply ( const rMAX _Rate, const bool _Chain = true ) -> void
+	#define SX_FNSIG_LAYER_APPLY auto apply ( const rMAX _Rate, const uMAX _Iter = 0, const bool _Chain = true ) -> void
 	#define SX_FNSIG_LAYER_STORE auto store ( std::ostream& _Stream, const bool _Chain = true ) const -> void
 	#define SX_FNSIG_LAYER_LOAD auto load ( std::istream& _Stream, const bool _Chain = true ) -> void
 	
@@ -51,7 +51,7 @@ namespace sx
 	#define SX_MC_LAYER_NEXT_EXE if(this->Front && _Chain) this->Front->exe()
 	#define SX_MC_LAYER_NEXT_RESET if(this->Front && _Chain) this->Front->reset()
 	#define SX_MC_LAYER_NEXT_FIT if(this->Back && _Chain) this->Back->fit(nullptr, _ErrParam)
-	#define SX_MC_LAYER_NEXT_APPLY if(this->Front && _Chain) this->Front->apply(_Rate)
+	#define SX_MC_LAYER_NEXT_APPLY if(this->Front && _Chain) this->Front->apply(_Rate, _Iter)
 	#define SX_MC_LAYER_NEXT_STORE if(this->Front && _Chain) this->Front->store(_Stream)
 	#define SX_MC_LAYER_NEXT_LOAD if(this->Front && _Chain) this->Front->load(_Stream)
 
@@ -93,7 +93,7 @@ namespace sx
 
 		virtual SX_FNSIG_LAYER_ERR { return 0; }
 		virtual SX_FNSIG_LAYER_RESET { if(this->Front) this->Front->reset(); }
-		virtual SX_FNSIG_LAYER_APPLY { if(this->Front) this->Front->apply(_Rate); }
+		virtual SX_FNSIG_LAYER_APPLY { if(this->Front) this->Front->apply(_Rate, _Iter); }
 		virtual SX_FNSIG_LAYER_STORE { if(this->Front) this->Front->store(_Stream); }
 		virtual SX_FNSIG_LAYER_LOAD { if(this->Front) this->Front->load(_Stream); }
 

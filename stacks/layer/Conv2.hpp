@@ -49,6 +49,10 @@ namespace sx
 		constexpr static auto SZ_KER_RDX_MIN = -iMAX(RADIUS);
 		constexpr static auto SZ_KER_RDX_MAX = iMAX(RADIUS + 1);
 
+		constexpr static auto LINE_BEG = RADIUS;
+		constexpr static auto LINE_END = WIDTH_IN - RADIUS;
+		constexpr static auto LINE_LEN = WIDTH_IN - RADIUS * 2;
+
 		constexpr static auto SZ_BUF_W = SZ_KER * KERNELS * DEPTH_IN;
 		constexpr static auto SZ_BUF_B = WIDTH_IN * HEIGHT_IN * KERNELS;
 		constexpr static auto SZ_IN = WIDTH_IN * HEIGHT_IN * DEPTH_IN;
@@ -66,27 +70,30 @@ namespace sx
 		{
 			memZero(SZ_OUT, this->OutRaw);
 
-			for(auto k = uMAX(0); k < KERNELS; ++k) { for(auto d = u64(0); d < DEPTH_IN; ++d) { for(auto y = RADIUS; y < (HEIGHT_IN - RADIUS); ++y)
-			{
-				auto ky = SZ_KER_RDX_MIN;
-				auto wo = uMAX(0);
-				for(auto kr = uMAX(0); kr < SZ_KER_EDGE; ++kr)
+			for(auto k = uMAX(0); k < KERNELS; ++k)
+			{ 
+				auto LnWeights = this->Weights + math::index_c(0, k, SZ_KER);
+				for(auto d = uMAX(0); d < DEPTH_IN; ++d) { for(auto y = RADIUS; y < (HEIGHT_IN - RADIUS); ++y)
 				{
-					for(auto x = RADIUS; x < (WIDTH_IN - RADIUS); ++x)
+					auto LnOut = this->OutRaw + math::index_c(RADIUS, y, k, WIDTH_IN, HEIGHT_IN);
+					auto LnInRow = this->Input + math::index_c(0, y - RADIUS, d, WIDTH_IN, HEIGHT_IN);
+					for(auto kr = uMAX(0); kr < SZ_KER_EDGE; ++kr)
 					{
-						const auto o = math::index_c(x, y, k, WIDTH_IN, HEIGHT_IN);
-						auto w = wo;
-						for(auto kx = SZ_KER_RDX_MIN; kx != SZ_KER_RDX_MAX; ++kx)
+						for(auto x = LINE_BEG; x < LINE_END; ++x)
 						{
-							this->OutRaw[o] += this->Input[math::index_c(x+kx, y+ky, d, WIDTH_IN, HEIGHT_IN)] * this->Weights[math::index_c(w, k, SZ_KER)];
-							++w;
+							for(auto w = uMAX(0); w < SZ_KER_EDGE; ++w) *(LnOut) += *(LnInRow+w) * *(LnWeights+w);
+							LnInRow++;
+							LnOut++;
 						}
+
+						LnInRow += WIDTH_IN - LINE_LEN;
+						LnWeights += SZ_KER_EDGE;
+						LnOut -= LINE_LEN;
 					}
 
-					ky += 1;
-					wo += SZ_KER_EDGE;
-				}
-			}}}
+					LnWeights -= SZ_KER;
+				}}
+			}
 
 			for(auto o = uMAX(0); o < SZ_OUT; ++o) this->OutTrans[o] = transfer<T,FN_TRANS>(this->OutRaw[o] + this->Biases[o]);
 
@@ -100,36 +107,79 @@ namespace sx
 		{
 			memZero(SZ_IN, this->Gradient);
 
-			for(auto k = uMAX(0); k < KERNELS; ++k) { for(auto d = u64(0); d < DEPTH_IN; ++d) { for(auto y = RADIUS; y < (HEIGHT_IN - RADIUS); ++y)
-			{
-				auto ky = SZ_KER_RDX_MIN;
-				auto wo = uMAX(0);
-				for(auto kr = uMAX(0); kr < SZ_KER_EDGE; ++kr)
+			for(auto k = uMAX(0); k < KERNELS; ++k)
+			{ 
+				auto LnWeights = this->Weights + math::index_c(0, k, SZ_KER);
+				auto LnWeightsDlt = this->WeightsDlt + math::index_c(0, k, SZ_KER);
+				for(auto d = uMAX(0); d < DEPTH_IN; ++d) { for(auto y = RADIUS; y < (HEIGHT_IN - RADIUS); ++y)
 				{
-					for(auto x = RADIUS; x < (WIDTH_IN - RADIUS); ++x)
-					{
-						const auto o = math::index_c(x, y, k, WIDTH_IN, HEIGHT_IN);
-						SX_MC_LAYER_DER_ERR;
-						SX_MC_LAYER_DER_TRANS;
-						auto w = wo;
-						for(auto kx = SZ_KER_RDX_MIN; kx != SZ_KER_RDX_MAX; ++kx)
-						{
-							const auto i = math::index_c(x+kx, y+ky, d, WIDTH_IN, HEIGHT_IN);
-							const auto ow = math::index_c(w, k, SZ_KER);
-							
-							if(!this->IsLocked) this->WeightsDlt[ow] += (this->Input[i] * DerTrans);
-							this->Gradient[i] += (this->Weights[ow] * DerTrans);
-							
-							++w;
-						}
+					const auto o = math::index_c(RADIUS, y, k, WIDTH_IN, HEIGHT_IN);
+					auto LnOut = this->OutRaw + math::index_c(RADIUS, y, k, WIDTH_IN, HEIGHT_IN);
+					auto LnInRow = this->Input + math::index_c(0, y - RADIUS, d, WIDTH_IN, HEIGHT_IN);
+					auto LnGradRow = this->Gradient + math::index_c(0, y - RADIUS, d, WIDTH_IN, HEIGHT_IN);
+					T DerCache[WIDTH_IN];
 
-						this->BiasesDlt[o] += DerTrans;
+					if(this->Front)
+					{
+						memCopy(LINE_LEN, DerCache + LINE_BEG, this->Front->gradient() + o);
 					}
 
-					ky += 1;
-					wo += SZ_KER_EDGE;
-				}
-			}}}
+					else
+					{
+						auto LnTarget = _Target + o;
+						auto LnOutTrans = this->OutTrans + o;
+						for(auto x = LINE_BEG; x < LINE_END; ++x)
+						{
+							DerCache[x] = errorDer<T,FN_ERR>(*LnTarget, *LnOutTrans);
+							LnTarget++;
+							LnOutTrans++;
+						}
+					}
+
+					auto LnOutTrans = this->OutTrans + o;
+					auto LnOutRaw = this->OutRaw + o;
+					for(auto x = LINE_BEG; x < LINE_END; ++x)
+					{
+						if constexpr(needRaw<T,FN_TRANS>())
+						{
+							DerCache[x] *= transferDer<T,FN_TRANS>(*LnOutTrans, *LnOutRaw);
+							LnOutTrans++;
+							LnOutRaw++;
+						}
+
+						else
+						{
+							DerCache[x] *= transferDer<T,FN_TRANS>(*LnOutTrans, T(0));
+							LnOutTrans++;
+						}
+					}
+					
+					for(auto kr = uMAX(0); kr < SZ_KER_EDGE; ++kr)
+					{
+						for(auto x = LINE_BEG; x < LINE_END; ++x)
+						{
+							for(auto w = uMAX(0); w < SZ_KER_EDGE; ++w)
+							{
+								*(LnWeightsDlt+w) += *(LnInRow+w) * DerCache[x];
+								*(LnGradRow+w) += *(LnWeights+w) *DerCache[x];
+							}
+
+							LnInRow++;
+							LnGradRow++;
+							LnOut++;
+						}
+
+						LnInRow += WIDTH_IN - LINE_LEN;
+						LnGradRow += WIDTH_IN - LINE_LEN;
+						LnWeights += SZ_KER_EDGE;
+						LnWeightsDlt += SZ_KER_EDGE;
+						LnOut -= LINE_LEN;
+					}
+
+					LnWeights -= SZ_KER;
+					LnWeightsDlt -= SZ_KER;
+				}}
+			}
 
 			SX_MC_LAYER_NEXT_FIT;
 		}

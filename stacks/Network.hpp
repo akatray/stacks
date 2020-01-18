@@ -21,6 +21,36 @@ namespace sx
 	using namespace fx;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Default network info structure.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	struct NetworkInfo
+	{
+		uMAX SxVerMajor;
+		uMAX SxVerMinor;
+		uMAX SxVerPatch;
+
+		uMAX Epochs;
+		uMAX TrainTime;
+		uMAX TrainUniqueSamples;
+
+		rMAX ErrMin;
+		rMAX ErrMax;
+		rMAX ErrAvg;
+
+		NetworkInfo ( void ) :
+			SxVerMajor(VERSION_MAJOR),
+			SxVerMinor(VERSION_MINOR),
+			SxVerPatch(VERSION_PATCH),
+			Epochs(0),
+			TrainTime(0),
+			TrainUniqueSamples(0),
+			ErrMin(0),
+			ErrMax(0),
+			ErrAvg(0)
+		{}
+	};
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Network components class.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	enum class CompClass
@@ -164,28 +194,36 @@ namespace sx
 		auto reset ( const bool _Connect = true ) -> void { if(_Connect) this->connect(); this->front()->reset(); }
 		auto err ( const T* _Target, const bool _Connect = true ) -> T { if(_Connect) this->connect(); return this->back()->err(_Target); }
 		auto fit ( const T* _Target, const T _ErrParam, const bool _Connect = true ) -> void { if(_Connect) this->connect(); return this->back()->fit(_Target, _ErrParam); }
-		auto apply ( const T _Rate, const bool _Connect = true ) -> void { if(_Connect) this->connect(); return this->front()->apply(_Rate); }
+		auto apply ( const rMAX _Rate, const uMAX _Iter, const bool _Connect = true ) -> void { if(_Connect) this->connect(); return this->front()->apply(_Rate, _Iter); }
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Store network to file.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto storeToFile ( const std::string& _Filename, const bool _Connect = true )
+		template<class I = NetworkInfo> auto storeToFile ( const std::string& _Filename, const I* _Info = nullptr, const bool _Connect = true )
 		{
 			if(_Connect) this->connect();
 
 			auto File = std::ofstream(_Filename, std::ios::binary);
-			if(File.is_open()) this->front()->store(File);
+			if(File.is_open())
+			{
+				if(_Info) File.write(reinterpret_cast<const char*>(_Info), sizeof(I));
+				this->front()->store(File);
+			}
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Load network from file.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		auto loadFromFile ( const std::string& _Filename, const bool _Connect = true )
+		template<class I = NetworkInfo> auto loadFromFile ( const std::string& _Filename, I* _Info = nullptr, const bool _Connect = true )
 		{
 			if(_Connect) this->connect();
 
 			auto File = std::ifstream(_Filename, std::ios::binary);
-			if(File.is_open()) this->front()->load(File);
+			if(File.is_open())
+			{
+				if(_Info) File.read(reinterpret_cast<char*>(_Info), sizeof(I));
+				this->front()->load(File);
+			}
 		}
 	};
 }
