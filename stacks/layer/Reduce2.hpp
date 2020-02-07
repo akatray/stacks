@@ -19,55 +19,61 @@ namespace sx
 	using namespace fx;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Dense layer.
+	// Weighted reduce 2d.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	template
 	<
 		class T,
-		uMAX SZ_IN,
-		uMAX SZ_OUT,
+		uMAX WIDTH_IN,
+		uMAX HEIGHT_IN,
+		uMAX DEPTH_IN,
+		uMAX DEPTH_OUT,
 		FnTrans FN_TRANS = FnTrans::RELU,
-		sx::FnInitWeights FN_INIT_W = sx::FnInitWeights::NRM_RELU,
+		FnInitWeights FN_INIT_W = sx::FnInitWeights::NRM_RELU,
 		FnOptim FN_OPTIM = FnOptim::ADAM,
 		FnErr FN_ERR = FnErr::MSE
 	>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	class Dense :
+	class Reduce2 :
 		public Layer<T>,
-		LDOutputs<T, SZ_OUT, SZ_IN, needRaw<T,FN_TRANS>()>,
-		LDWeights<T, FN_OPTIM, SZ_IN*SZ_OUT, SZ_IN, SZ_OUT, FN_INIT_W>,
-		LDBiases<T, SZ_OUT, SZ_IN, SZ_OUT, needBufM<T,FN_OPTIM>(), needBufV<T,FN_OPTIM>()>
+		LDOutputs<T, WIDTH_IN*HEIGHT_IN, WIDTH_IN*HEIGHT_IN*DEPTH_IN, true>,
+		LDWeights<T, FN_OPTIM, DEPTH_IN*DEPTH_OUT, WIDTH_IN*HEIGHT_IN*DEPTH_IN, WIDTH_IN*HEIGHT_IN*DEPTH_OUT, FN_INIT_W>,
+		LDBiases<T, WIDTH_IN*HEIGHT_IN*DEPTH_OUT, 0, 0, needBufM<T,FN_OPTIM>(), needBufV<T,FN_OPTIM>()>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Compile time constants.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		constexpr static auto SZ_BUF_W = SZ_OUT * SZ_IN;
+		constexpr static auto SZ_IN = WIDTH_IN * HEIGHT_IN * DEPTH_IN;
+		constexpr static auto SZ_OUT = WIDTH_IN * HEIGHT_IN * DEPTH_OUT;
+		constexpr static auto SZ_BUF_W = DEPTH_IN * DEPTH_OUT;
 		constexpr static auto SZ_BUF_B = SZ_OUT;
 		
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Generated functions.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		SX_MC_LAYER_TRIVIAL(Dense, SZ_OUT, this->OutTrans, this->Gradient)
+		SX_MC_LAYER_TRIVIAL(Reduce2, SZ_OUT, this->OutTrans, this->Gradient)
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Execute layer.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_EXE final
 		{
-			for(auto o = uMAX(0); o < SZ_OUT; ++o)
+			memZero(SZ_OUT, this->OutRaw);
+			
+			for(auto od = uMAX(0); od < DEPTH_OUT; ++od) { for(auto y = uMAX(0); y < HEIGHT_IN; ++y) { for(auto x = uMAX(0); x < WIDTH_IN; ++x)
 			{
-				if constexpr(needRaw<T,FN_TRANS>())
+				const auto o = math::index_c(x, y, od, WIDTH_IN, HEIGHT_IN);
+				for(auto id = uMAX(0); id < DEPTH_IN; ++id)
 				{
-					this->OutRaw[o] = std::inner_product(this->Input, this->Input + SZ_IN, this->Weights + math::index_c(0, o, SZ_IN), T(0)) + this->Biases[o];
-					this->OutTrans[o] = transfer<T,FN_TRANS>(this->OutRaw[o]);
+					const auto i = math::index_c(x, y, id, WIDTH_IN, HEIGHT_IN);
+					const auto w = math::index_c(id, od, DEPTH_IN);
+
+					this->OutRaw[o] += this->Input[i] * this->Weights[w];
 				}
 
-				else
-				{
-					this->OutTrans[o] = transfer<T,FN_TRANS>(std::inner_product(this->Input, this->Input + SZ_IN, this->Weights + math::index_c(0, o, SZ_IN), T(0)) + this->Biases[o]);
-				}
-			}
+				this->OutTrans[o] = transfer<T,FN_TRANS>(this->OutRaw[o] + this->Biases[o]);
+			}}}
 
 			SX_MC_LAYER_NEXT_EXE;
 		}
@@ -79,15 +85,22 @@ namespace sx
 		{
 			memZero(SZ_IN, this->Gradient);
 
-			for(auto o = uMAX(0); o < SZ_OUT; ++o)
+			for(auto od = uMAX(0); od < DEPTH_OUT; ++od) { for(auto y = uMAX(0); y < HEIGHT_IN; ++y) { for(auto x = uMAX(0); x < WIDTH_IN; ++x)
 			{
+				const auto o = math::index_c(x, y, od, WIDTH_IN, HEIGHT_IN);
 				SX_MC_LAYER_DER_ERR;
 				SX_MC_LAYER_DER_TRANS;
+				for(auto id = uMAX(0); id < DEPTH_IN; ++id)
+				{
+					const auto i = math::index_c(x, y, id, WIDTH_IN, HEIGHT_IN);
+					const auto w = math::index_c(id, od, DEPTH_IN);
 
-				vops::mulVecByConstAddToOut(SZ_IN, this->Gradient, &this->Weights[math::index_c(0, o, SZ_IN)], DerTrans);
-				vops::mulVecByConstAddToOut(SZ_IN, &this->WeightsDlt[math::index_c(0, o, SZ_IN)], this->Input, DerTrans);
+					this->WeightsDlt[w] += this->Input[i] * DerTrans;
+					this->Gradient[i] += this->Weights[w] * DerTrans;
+				}
+
 				this->BiasesDlt[o] += DerTrans;
-			}
+			}}}
 
 			SX_MC_LAYER_NEXT_FIT;
 		}

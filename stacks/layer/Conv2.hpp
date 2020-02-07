@@ -29,16 +29,17 @@ namespace sx
 		uMAX DEPTH_IN,
 		uMAX KERNELS = 1,
 		uMAX RADIUS = 1,
-		FnTrans FN_TRANS = FnTrans::PRELU,
-		FnOptim FN_OPTIM = FnOptim::MOMENTUM,
+		FnTrans FN_TRANS = FnTrans::RELU,
+		sx::FnInitWeights FN_INIT_W = sx::FnInitWeights::NRM_RELU,
+		FnOptim FN_OPTIM = FnOptim::ADAM,
 		FnErr FN_ERR = FnErr::MSE
 	>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	class Conv2 :
 		public Layer<T>,
-		LDOutputs<T, WIDTH_IN * HEIGHT_IN * KERNELS, WIDTH_IN * HEIGHT_IN * DEPTH_IN, true>,
-		LDWeights<T, uMAX(((RADIUS*2)+1)*((RADIUS*2)+1)) * KERNELS * DEPTH_IN, 0, 0, needBufM<T,FN_OPTIM>(), needBufV<T,FN_OPTIM>()>,
-		LDBiases<T, WIDTH_IN * HEIGHT_IN * KERNELS, 0, 0, needBufM<T,FN_OPTIM>(), needBufV<T,FN_OPTIM>()>
+		LDOutputs<T, WIDTH_IN*HEIGHT_IN*KERNELS, WIDTH_IN*HEIGHT_IN*DEPTH_IN, true>,
+		LDWeights<T, FN_OPTIM, uMAX(((RADIUS*2)+1)*((RADIUS*2)+1))*KERNELS*DEPTH_IN, WIDTH_IN*HEIGHT_IN*DEPTH_IN, WIDTH_IN*HEIGHT_IN*KERNELS, FN_INIT_W>,
+		LDBiases<T, WIDTH_IN*HEIGHT_IN*KERNELS, 0, 0, needBufM<T,FN_OPTIM>(), needBufV<T,FN_OPTIM>()>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -64,7 +65,7 @@ namespace sx
 		SX_MC_LAYER_TRIVIAL(Conv2, SZ_OUT, this->OutTrans, this->Gradient)
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Execute layer.
+		// Execute layer. Optimized for memory order.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_EXE final
 		{
@@ -101,7 +102,7 @@ namespace sx
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Backpropagate.
+		// Backpropagate. Optimized for memory order.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_FIT final
 		{
@@ -154,6 +155,9 @@ namespace sx
 						}
 					}
 					
+					auto LnBias = this->BiasesDlt + math::index_c(RADIUS, y, k, WIDTH_IN, HEIGHT_IN);
+					for(auto x = LINE_BEG; x < LINE_END; ++x) {*LnBias += DerCache[x]; LnBias++;}
+
 					for(auto kr = uMAX(0); kr < SZ_KER_EDGE; ++kr)
 					{
 						for(auto x = LINE_BEG; x < LINE_END; ++x)
@@ -161,7 +165,7 @@ namespace sx
 							for(auto w = uMAX(0); w < SZ_KER_EDGE; ++w)
 							{
 								*(LnWeightsDlt+w) += *(LnInRow+w) * DerCache[x];
-								*(LnGradRow+w) += *(LnWeights+w) *DerCache[x];
+								*(LnGradRow+w) += *(LnWeights+w) * DerCache[x];
 							}
 
 							LnInRow++;

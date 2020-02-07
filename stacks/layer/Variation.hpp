@@ -45,7 +45,7 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Members.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		Dense<T, SZ_IN, SZ_OUT * 2, FnTrans::LINEAR, FN_OPTIM, FN_ERR> MeanDev;
+		Dense<T, SZ_IN, SZ_OUT * 2, FnTrans::LINEAR, sx::FnInitWeights::NRM_TANH, FN_OPTIM, FN_ERR> MeanDev;
 		alignas(ALIGNMENT) T NormalSample[SZ_OUT];
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -105,11 +105,11 @@ namespace sx
 					DerErrDev = (std::exp(this->MeanDev.out()[o + SZ_OUT]) - T(1)) ;
 				}
 
-				//const auto DerErrMeanRec = this->Front->gradient()[o];
-				//const auto DerErrDevRec = this->Front->gradient()[o] * this->NormalSample[o];
+				const auto DerErrMeanRec = this->Front->gradient()[o];
+				const auto DerErrDevRec = this->Front->gradient()[o] * this->NormalSample[o];
 
-				const auto DerErrMeanRec = this->Front->gradient()[o] * std::lerp(T(1), T(0), std::clamp(et*5, T(0), T(0.9)));
-				const auto DerErrDevRec = this->Front->gradient()[o] * this->NormalSample[o] * std::lerp(T(1), T(0), std::clamp(et*5, T(0), T(0.9)));
+				//const auto DerErrMeanRec = this->Front->gradient()[o] * std::lerp(T(1), T(0), std::clamp(et*5, T(0), T(0.9)));
+				//const auto DerErrDevRec = this->Front->gradient()[o] * this->NormalSample[o] * std::lerp(T(1), T(0), std::clamp(et*5, T(0), T(0.9)));
 
 				this->Gradient[o] = DerErrMeanRec + DerErrMean;
 				this->Gradient[o+SZ_OUT] = DerErrDevRec + DerErrDev;

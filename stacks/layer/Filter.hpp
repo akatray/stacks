@@ -23,7 +23,20 @@ namespace sx
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	enum class Effect
 	{
-		NORMALIZE
+		NORMALIZE,
+		NOISE
+	};
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Effect params: Noise.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	struct EPNoise
+	{
+		const rMAX Min;
+		const rMAX Max;
+
+		constexpr EPNoise ( void ) : Min(0.9), Max(1.1) {}
+		constexpr EPNoise ( const rMAX _Min, const rMAX _Max ) : Min(_Min), Max(Max) {}
 	};
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -60,6 +73,15 @@ namespace sx
 	};
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Effect data: Noise.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	template<class T, uMAX SIZE> struct EDNoise
+	{
+		alignas(ALIGNMENT) T Noise[SIZE];
+		EDNoise ( void ) : Noise{} {}
+	};
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Apply effect on input data.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	template
@@ -68,13 +90,15 @@ namespace sx
 		Effect EFFECT,
 		uMAX SZ_IN,
 		FnOptim FN_OPTIM = FnOptim::MOMENTUM,
-		FnErr FN_ERR = FnErr::MSE
+		FnErr FN_ERR = FnErr::MSE,
+		class PARAMS = std::conditional_t<EFFECT == Effect::NORMALIZE, Nothing, std::conditional_t<EFFECT == Effect::NOISE, EPNoise, Nothing>>
 	>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	class Filter :
 		public Layer<T>,
 		LDOutputs<T, SZ_IN, SZ_IN, false>,
-		std::conditional_t<EFFECT == Effect::NORMALIZE, EDNormalize<T>, Nothing>
+		std::conditional_t<EFFECT == Effect::NORMALIZE, EDNormalize<T>, Nothing>,
+		std::conditional_t<EFFECT == Effect::NOISE, EDNoise<T, SZ_IN>, Nothing>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -83,9 +107,20 @@ namespace sx
 		constexpr static auto SZ_OUT = SZ_IN;
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Members.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		PARAMS Params;
+
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Generated functions.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_MC_LAYER_TRIVIAL(Filter, SZ_IN, this->OutTrans, this->Gradient)
+
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Constructors.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		Filter ( void ) : Params() {}
+		Filter ( const PARAMS& _Params ) : Params(_Params) {}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Execute layer.
@@ -98,6 +133,12 @@ namespace sx
 				this->Deviation = std::sqrt(math::sqr(math::stddev(SZ_IN, this->Input, this->Mean)) + T(1e-5));
 				
 				for(auto o = uMAX(0); o < SZ_IN; ++o) this->OutTrans[o] = this->Alpha * ((this->Input[o] - this->Mean) / this->Deviation) + this->Beta;
+			}
+
+			if constexpr(EFFECT == Effect::NOISE)
+			{
+				rng::rbuf<T>(SZ_IN, this->Noise, this->Params.Min, this->Params.Max);
+				vops::mulVecByVec(SZ_IN, this->OutTrans, this->Input, this->Noise);
 			}
 			
 			SX_MC_LAYER_NEXT_EXE;
@@ -118,9 +159,14 @@ namespace sx
 					this->DltBeta += DerErr;
 					
 					DerErr *= this->Alpha / this->Deviation;
+					
+					this->Gradient[o] = DerErr;
 				}
 
-				this->Gradient[o] = DerErr;
+				if constexpr(EFFECT == Effect::NOISE)
+				{
+					this->Gradient[o] = this->Noise[o] * DerErr;
+				}
 			}
 		
 			SX_MC_LAYER_NEXT_FIT;
@@ -157,8 +203,8 @@ namespace sx
 			{
 				if constexpr(EFFECT == Effect::NORMALIZE)
 				{
-					optimApply<T,FN_OPTIM>(_Rate, 1, &this->Alpha, &this->DltAlpha, &this->DltMAlpha, &this->DltVAlpha);
-					optimApply<T,FN_OPTIM>(_Rate, 1, &this->Beta, &this->DltBeta, &this->DltMBeta, &this->DltVBeta);
+					optimApply<T,FN_OPTIM>(_Rate, _Iter, 1, &this->Alpha, &this->DltAlpha, &this->DltMAlpha, &this->DltVAlpha);
+					optimApply<T,FN_OPTIM>(_Rate, _Iter, 1, &this->Beta, &this->DltBeta, &this->DltMBeta, &this->DltVBeta);
 				}
 			}
 

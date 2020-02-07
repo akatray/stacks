@@ -4,6 +4,11 @@
 #pragma once
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Imports.
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#include "./../../Optimizer.hpp"
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Neural Networks Experiment.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 namespace sx
@@ -14,46 +19,100 @@ namespace sx
 	using namespace fx;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Macros.
+	// Prototypes.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	#define SX_MC_WEIGHT_INIT rng::rbuf(SZ_BUF, this->Weights, T(0.0001), T(0.001));
-	//#define SX_MC_WEIGHT_INIT rng::rbuf_nrm(SZ_BUF, this->Weights, T(0), T(1)); for(auto w = uMAX(0); w < SZ_BUF; ++w) this->Weights[w] += T(0.0000001);
-	//#define SX_MC_WEIGHT_INIT rng::rbuf(SZ_BUF, this->Weights, -std::sqrt(T(6) / (T(SZ_IN), T(SZ_OUT))), std::sqrt(T(6) / (T(SZ_IN), T(SZ_OUT))));
-
+	class Nothing;
+	
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Layer data: Weights buffers.
+	// Initialisation options.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	template<class T, uMAX SZ_BUF, uMAX SZ_IN, uMAX SZ_OUT, bool HAS_BUF_M = true, bool HAS_BUF_V = true>
-	struct LDWeights
+	enum class FnInitWeights
 	{
-		alignas(ALIGNMENT) T Weights[SZ_BUF];
-		alignas(ALIGNMENT) T WeightsDlt[SZ_BUF];
-		alignas(ALIGNMENT) T WeightsDltM[SZ_BUF];
-		alignas(ALIGNMENT) T WeightsDltV[SZ_BUF];
+		DEFAULT,
 
-		LDWeights ( void ) : Weights{}, WeightsDlt{}, WeightsDltM{}, WeightsDltV{} { SX_MC_WEIGHT_INIT }
+		NRM_SIGMOID,
+		NRM_TANH,
+		NRM_RELU,
+
+		UNI_SIGMOID,
+		UNI_TANH,
+		UNI_RELU
 	};
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-	template<class T, uMAX SZ_BUF, uMAX SZ_IN, uMAX SZ_OUT>
-	struct LDWeights<T, SZ_BUF, SZ_IN, SZ_OUT, false, false>
+	// Weights m buffer.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	template<class T, uMAX SIZE> struct LDWeightsM
 	{
-		alignas(ALIGNMENT) T Weights[SZ_BUF];
-		alignas(ALIGNMENT) T WeightsDlt[SZ_BUF];
-
-		LDWeights ( void ) : Weights{}, WeightsDlt{} { SX_MC_WEIGHT_INIT }
+		alignas(ALIGNMENT) T WeightsDltM[SIZE];
+		LDWeightsM ( void ) : WeightsDltM{}{}
+	};
+	
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Weights m and v buffers.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	template<class T, uMAX SIZE> struct LDWeightsMV
+	{
+		alignas(ALIGNMENT) T WeightsDltM[SIZE];
+		alignas(ALIGNMENT) T WeightsDltV[SIZE];
+		LDWeightsMV ( void ) : WeightsDltM{}, WeightsDltV{}{}
 	};
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-	template<class T, uMAX SZ_BUF, uMAX SZ_IN, uMAX SZ_OUT>
-	struct LDWeights<T, SZ_BUF, SZ_IN, SZ_OUT, true, false>
+	// Weights and delta buffers.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	template<class T, FnOptim FN_OPTIM, uMAX SZ_BUF, uMAX SZ_IN, uMAX SZ_OUT, FnInitWeights FN_INIT_W = FnInitWeights::DEFAULT>
+	struct LDWeights:
+	std::conditional_t<FN_OPTIM == FnOptim::MOMENTUM, LDWeightsM<T, SZ_BUF>, Nothing>,
+	std::conditional_t<FN_OPTIM == FnOptim::ADAM, LDWeightsMV<T, SZ_BUF>, Nothing>
 	{
+		alignas(ALIGNMENT) uMAX Iter;
+		
 		alignas(ALIGNMENT) T Weights[SZ_BUF];
 		alignas(ALIGNMENT) T WeightsDlt[SZ_BUF];
-		alignas(ALIGNMENT) T WeightsDltM[SZ_BUF];
 
-		LDWeights ( void ) : Weights{}, WeightsDlt{}, WeightsDltM{} { SX_MC_WEIGHT_INIT }
+		LDWeights ( void ) : Iter(0), Weights{}, WeightsDlt{}
+		{
+			if constexpr(FN_INIT_W == FnInitWeights::DEFAULT)
+			{
+				rng::rbuf(SZ_BUF, this->Weights, T(0.0001), T(0.001));
+			}
+
+			if constexpr(FN_INIT_W == FnInitWeights::NRM_SIGMOID)
+			{
+				const auto Variance = T(4) * std::sqrt(T(2) / (SZ_IN + SZ_OUT));
+				rng::rbuf_nrm(SZ_BUF, this->Weights, T(0), Variance);
+			}
+
+			if constexpr(FN_INIT_W == FnInitWeights::NRM_TANH)
+			{
+				const auto Variance = std::sqrt(T(2) / (SZ_IN + SZ_OUT));
+				rng::rbuf_nrm(SZ_BUF, this->Weights, T(0), Variance);
+			}
+
+			if constexpr(FN_INIT_W == FnInitWeights::NRM_RELU)
+			{
+				const auto Variance =  std::sqrt(T(2)) * std::sqrt(T(2) / (SZ_IN + SZ_OUT));
+				rng::rbuf_nrm(SZ_BUF, this->Weights, T(0), Variance);
+			}
+
+			if constexpr(FN_INIT_W == FnInitWeights::UNI_SIGMOID)
+			{
+				const auto Range = T(4) * std::sqrt(T(6) / (SZ_IN + SZ_OUT));
+				rng::rbuf(SZ_BUF, this->Weights, -Range, Range);
+			}
+
+			if constexpr(FN_INIT_W == FnInitWeights::UNI_TANH)
+			{
+				const auto Range = std::sqrt(T(6) / (SZ_IN + SZ_OUT));
+				rng::rbuf(SZ_BUF, this->Weights, -Range, Range);
+			}
+
+			if constexpr(FN_INIT_W == FnInitWeights::UNI_RELU)
+			{
+				const auto Range = std::sqrt(T(2)) * std::sqrt(T(6) / (SZ_IN + SZ_OUT));
+				rng::rbuf(SZ_BUF, this->Weights, -Range, Range);
+			}
+		}
 	};
 }

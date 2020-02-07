@@ -102,7 +102,7 @@ namespace sx
 				const auto m = _BuffM[i] / (T(1) - std::pow(BETA1, Iter));
 				const auto v = _BuffV[i] / (T(1) - std::pow(BETA2, Iter));
 
-				_Buff[i] -= _Rate * m / std::sqrt(v) + EPSILON;
+				_Buff[i] -= (_Rate * m) / (std::sqrt(v) + EPSILON);
 			}
 		}
 	}
