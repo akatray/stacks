@@ -46,6 +46,7 @@ namespace sx
 	#define SX_FNSIG_LAYER_APPLY auto apply ( const rMAX _Rate, const uMAX _Iter = 0, const bool _Chain = true ) -> void
 	#define SX_FNSIG_LAYER_STORE auto store ( std::ostream& _Stream, const bool _Chain = true ) const -> void
 	#define SX_FNSIG_LAYER_LOAD auto load ( std::istream& _Stream, const bool _Chain = true ) -> void
+	#define SX_FNSIG_LAYER_EXCHANGE auto exchange ( Layer<T>* _Master, const bool _Chain = true ) -> void
 	
 	// Macros for chained function calls.
 	#define SX_MC_LAYER_NEXT_EXE if(this->Front && _Chain) this->Front->exe()
@@ -83,19 +84,20 @@ namespace sx
 		Layer ( void ) : Front(nullptr), Back(nullptr), Input(nullptr), IsLocked(false) {}
 		virtual ~Layer ( void ) {}
 
-		virtual SX_FNSIG_LAYER_OUTSZ = 0;
-		virtual SX_FNSIG_LAYER_OUTSZBT = 0;
-		virtual SX_FNSIG_LAYER_OUT = 0;
-		virtual SX_FNSIG_LAYER_GRAD = 0;
+		virtual SX_FNSIG_LAYER_OUTSZ = 0; // Get output size in Ts.
+		virtual SX_FNSIG_LAYER_OUTSZBT = 0; // Get output size in chars.
+		virtual SX_FNSIG_LAYER_OUT = 0; // Get output buffer pointer.
+		virtual SX_FNSIG_LAYER_GRAD = 0; // Get gradient buffer pointer.
 
-		virtual SX_FNSIG_LAYER_EXE = 0;
-		virtual SX_FNSIG_LAYER_FIT = 0;
+		virtual SX_FNSIG_LAYER_EXE = 0; // Execute.
+		virtual SX_FNSIG_LAYER_FIT = 0; // Backpropagate.
 
-		virtual SX_FNSIG_LAYER_ERR { return 0; }
-		virtual SX_FNSIG_LAYER_RESET { if(this->Front) this->Front->reset(); }
-		virtual SX_FNSIG_LAYER_APPLY { if(this->Front) this->Front->apply(_Rate, _Iter); }
-		virtual SX_FNSIG_LAYER_STORE { if(this->Front) this->Front->store(_Stream); }
-		virtual SX_FNSIG_LAYER_LOAD { if(this->Front) this->Front->load(_Stream); }
+		virtual SX_FNSIG_LAYER_ERR { return 0; } // Get output error in respect to argument.
+		virtual SX_FNSIG_LAYER_RESET { if(this->Front) this->Front->reset(); } // Reset delta parameters.
+		virtual SX_FNSIG_LAYER_APPLY { if(this->Front) this->Front->apply(_Rate, _Iter); } // Apply optimizations and update parameters.
+		virtual SX_FNSIG_LAYER_STORE { if(this->Front) this->Front->store(_Stream); } // Store parameters to stream.
+		virtual SX_FNSIG_LAYER_LOAD { if(this->Front) this->Front->load(_Stream); } // Load parameters from stream.
+		virtual SX_FNSIG_LAYER_EXCHANGE = 0; // Multi threading utility.
 
 		inline auto lock ( void ) -> void { this->IsLocked = true; }
 		inline auto unlock ( void ) -> void { this->IsLocked = false; }

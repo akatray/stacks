@@ -196,6 +196,9 @@ namespace sx
 		auto fit ( const T* _Target, const T _ErrParam, const bool _Connect = true ) -> void { if(_Connect) this->connect(); return this->back()->fit(_Target, _ErrParam); }
 		auto apply ( const rMAX _Rate, const uMAX _Iter, const bool _Connect = true ) -> void { if(_Connect) this->connect(); return this->front()->apply(_Rate, _Iter); }
 
+		//auto copyParams ( ptr _Src, const bool _Connect = true ) -> void { if(_Connect) this->connect(); return this->front()->copy(_Src); }
+		//auto copyParamsDlt ( ptr _Src, const bool _Connect = true ) -> void { if(_Connect) this->connect(); return this->front()->merge(_Src); }
+
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Store network to file.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
