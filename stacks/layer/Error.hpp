@@ -19,126 +19,63 @@ namespace sx
 	using namespace fx;
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Dense layer.
+	// End layer for error calculation.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	template
 	<
 		class T,
-		uMAX SZ_IN,
-		uMAX SZ_OUT,
-		FnTrans FN_TRANS = FnTrans::RELU,
-		sx::FnInitWeights FN_INIT_W = sx::FnInitWeights::NRM_RELU,
-		FnOptim FN_OPTIM = FnOptim::ADAM,
+		uMAX SIZE,
 		FnErr FN_ERR = FnErr::MSE
 	>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	class Dense :
-		public Layer<T>,
-		LDOutputs<T, SZ_OUT, SZ_IN, needRaw<T,FN_TRANS>()>,
-		LDWeights<T, FN_OPTIM, SZ_IN*SZ_OUT, SZ_IN, SZ_OUT, FN_INIT_W>,
-		LDBiases<T, SZ_OUT, SZ_IN, SZ_OUT, needBufM<T,FN_OPTIM>(), needBufV<T,FN_OPTIM>()>
+	class Error :
+		public Layer<T>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Compile time constants.
+		// Members.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		constexpr static auto SZ_BUF_W = SZ_OUT * SZ_IN;
-		constexpr static auto SZ_BUF_B = SZ_OUT;
-		
+		alignas(ALIGNMENT) T Gradient[SIZE];
+
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Generated functions.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		SX_MC_LAYER_TRIVIAL(Dense, SZ_OUT, this->OutTrans, this->Gradient)
+		SX_MC_LAYER_TRIVIAL(Error, SIZE, this->Input, this->Gradient)
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Execute.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		SX_FNSIG_LAYER_EXE final
-		{
-			for(auto o = uMAX(0); o < SZ_OUT; ++o)
-			{
-				if constexpr(needRaw<T,FN_TRANS>())
-				{
-					this->OutRaw[o] = std::inner_product(this->Input, this->Input + SZ_IN, this->Weights + math::index_c(0, o, SZ_IN), T(0)) + this->Biases[o];
-					this->OutTrans[o] = transfer<T,FN_TRANS>(this->OutRaw[o]);
-				}
-
-				else
-				{
-					this->OutTrans[o] = transfer<T,FN_TRANS>(std::inner_product(this->Input, this->Input + SZ_IN, this->Weights + math::index_c(0, o, SZ_IN), T(0)) + this->Biases[o]);
-				}
-			}
-
-			SX_MC_LAYER_NEXT_EXE;
-		}
+		SX_FNSIG_LAYER_EXE final { return; }
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Backpropagate.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_FIT final
 		{
-			memZero(SZ_IN, this->Gradient);
-
-			auto OutNeeded = this->OutTrans;
-			if constexpr(needRaw<T,FN_TRANS>()) OutNeeded = this->OutRaw;
+			if(!this->Front) for(auto g = uMAX(0); g < SIZE; ++g) this->Gradient[g] = errorDer<T,FN_ERR>(_Target[g], this->Input[g]);
+			else throw fx::Error("sx"s, "Error"s, "fit"s, 0, "Not last layer in network!"s);
 			
-			if(this->Front)
-			{
-				for(auto o = uMAX(0); o < SZ_OUT; ++o)
-				{
-					const auto DerErr = this->Front->gradient()[o];
-					const auto DerTrans = std::clamp(transferDer<T,FN_TRANS>(OutNeeded[o]) * DerErr, T(-1), T(1));
-
-					vops::mulVecByConstAddToOut(SZ_IN, this->Gradient, &this->Weights[math::index_c(0, o, SZ_IN)], DerTrans);
-					vops::mulVecByConstAddToOut(SZ_IN, &this->WeightsDlt[math::index_c(0, o, SZ_IN)], this->Input, DerTrans);
-					this->BiasesDlt[o] += DerTrans;
-				}
-			}
-
-			else
-			{
-				for(auto o = uMAX(0); o < SZ_OUT; ++o)
-				{
-					const auto DerErr = errorDer<T,FN_ERR>(_Target[o], this->OutTrans[o]);
-					const auto DerTrans = std::clamp(transferDer<T,FN_TRANS>(OutNeeded[o]) * DerErr, T(-1), T(1));
-
-					vops::mulVecByConstAddToOut(SZ_IN, this->Gradient, &this->Weights[math::index_c(0, o, SZ_IN)], DerTrans);
-					vops::mulVecByConstAddToOut(SZ_IN, &this->WeightsDlt[math::index_c(0, o, SZ_IN)], this->Input, DerTrans);
-					this->BiasesDlt[o] += DerTrans;
-				}
-			}
-
 			SX_MC_LAYER_NEXT_FIT;
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Get output error in respect to argument.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplErr.hpp"
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Reset delta parameters.
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplReset.hpp"
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Apply optimizations and update parameters.
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplApply.hpp"
+		SX_FNSIG_LAYER_ERR final { return error<T,FN_ERR>(SIZE, _Target, this->Input); }
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Store parameters to stream.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplStore.hpp"
+		SX_FNSIG_LAYER_STORE final { return; }
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Load parameters from stream.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplLoad.hpp"
+		SX_FNSIG_LAYER_LOAD final { return; }
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Multi threading utility.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplExchange.hpp"
+		SX_FNSIG_LAYER_EXCHANGE final { return; }
 	};
 }

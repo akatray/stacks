@@ -26,13 +26,12 @@ namespace sx
 		class T,
 		uMAX WIDTH_IN,
 		uMAX HEIGHT_IN,
-		uMAX DEPTH_IN,
-		FnErr FN_ERR = FnErr::MSE
+		uMAX DEPTH_IN
 	>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	class Upscale2 :
 		public Layer<T>,
-		LDOutputs<T, (WIDTH_IN * 2) * (HEIGHT_IN * 2) * DEPTH_IN, WIDTH_IN * HEIGHT_IN * DEPTH_IN, false>
+		LDOutputs<T, (WIDTH_IN*2)*(HEIGHT_IN*2)*DEPTH_IN, WIDTH_IN*HEIGHT_IN*DEPTH_IN, false>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -49,82 +48,42 @@ namespace sx
 		SX_MC_LAYER_TRIVIAL(Upscale2, SZ_OUT, this->OutTrans, this->Gradient)
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Execute.
+		// Execute. Optimized for sequential access.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_EXE final
 		{
-			auto ox = uMAX(0);
-			auto oy = uMAX(0);
-
-			for(auto iy = uMAX(0); iy < HEIGHT_IN; ++iy) { for(auto ix = uMAX(0); ix < WIDTH_IN; ++ix)
+			auto LnIn = this->Input;
+			auto LnOut = this->OutTrans;
+			for(auto d = u64(0); d < DEPTH_IN; ++d) { for(auto iy = uMAX(0); iy < HEIGHT_IN; ++iy)
 			{
-				for(auto d = u64(0); d < DEPTH_IN; ++d)
-				{
-					const auto Value = this->Input[math::index_c(ix, iy, d, WIDTH_IN, HEIGHT_IN)];
-
-					this->OutTrans[math::index_c(ox, oy, d, WIDTH_OUT, HEIGHT_OUT)] = Value;
-					this->OutTrans[math::index_c(ox + uMAX(1), oy, d, WIDTH_OUT, HEIGHT_OUT)] = Value;
-					this->OutTrans[math::index_c(ox, oy + uMAX(1), d, WIDTH_OUT, HEIGHT_OUT)] = Value;
-					this->OutTrans[math::index_c(ox + uMAX(1), oy + uMAX(1), d, WIDTH_OUT, HEIGHT_OUT)] = Value;
-				}
-
-				ox += uMAX(2); if(ox >= WIDTH_OUT) { ox = uMAX(0); oy += uMAX(2); }
+				for(auto ix = uMAX(0); ix < WIDTH_IN; ++ix) { *LnOut = *LnIn; *(LnOut+1) = *LnIn; LnIn += 1; LnOut += 2; }
+				LnIn -= WIDTH_IN;
+				for(auto ix = uMAX(0); ix < WIDTH_IN; ++ix) { *LnOut = *LnIn; *(LnOut+1) = *LnIn; LnIn += 1; LnOut += 2; }
 			}}
 
 			SX_MC_LAYER_NEXT_EXE;
 		}
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Backpropagate.
+		// Backpropagate. Optimized for sequential access.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_FIT final
 		{
-			auto ox = uMAX(0);
-			auto oy = uMAX(0);
-				
-			for(auto iy = uMAX(0); iy < HEIGHT_IN; ++iy) { for(auto ix = uMAX(0); ix < WIDTH_IN; ++ix)
+			if(!this->Front) throw iMAX(-1);
+			
+			memZero(SZ_IN, this->Gradient);
+
+			auto LnInGrad = this->Front->gradient();
+			auto LnOutGrad = this->Gradient;
+			for(auto d = uMAX(0); d < DEPTH_IN; ++d) { for(auto iy = uMAX(0); iy < HEIGHT_IN; ++iy)
 			{
-				for(auto d = uMAX(0); d < DEPTH_IN; ++d)
-				{
-					uMAX o[4];
-					o[0] = math::index_c(ox, oy, d, WIDTH_OUT, HEIGHT_OUT);
-					o[1] = math::index_c(ox + uMAX(1), oy, d, WIDTH_OUT, HEIGHT_OUT);
-					o[2] = math::index_c(ox, oy + uMAX(1), d, WIDTH_OUT, HEIGHT_OUT);
-					o[3] = math::index_c(ox + uMAX(1), oy + uMAX(1), d, WIDTH_OUT, HEIGHT_OUT);
-
-
-					T DerErr[4];
-					
-					if(this->Front)
-					{
-						DerErr[0] = this->Front->gradient()[o[0]];
-						DerErr[1] = this->Front->gradient()[o[1]];
-						DerErr[2] = this->Front->gradient()[o[2]];
-						DerErr[3] = this->Front->gradient()[o[3]];
-					}
-					
-					else
-					{
-						DerErr[0] = errorDer<T,FN_ERR>(_Target[o[0]], this->OutTrans[o[0]]);
-						DerErr[1] = errorDer<T,FN_ERR>(_Target[o[1]], this->OutTrans[o[1]]);
-						DerErr[2] = errorDer<T,FN_ERR>(_Target[o[2]], this->OutTrans[o[2]]);
-						DerErr[3] = errorDer<T,FN_ERR>(_Target[o[3]], this->OutTrans[o[3]]);
-					}
-
-
-					this->Gradient[math::index_c(ix, iy, d, WIDTH_IN, HEIGHT_IN)] = (DerErr[0] + DerErr[1] + DerErr[2] + DerErr[3]);
-				}
-
-				ox += uMAX(2); if(ox >= WIDTH_OUT) { ox = uMAX(0); oy += uMAX(2); }
+				for(auto ix = uMAX(0); ix < WIDTH_IN; ++ix) { *LnOutGrad += *LnInGrad; *LnOutGrad += *(LnInGrad+1); LnOutGrad += 1; LnInGrad += 2; }
+				LnOutGrad -= WIDTH_IN;
+				for(auto ix = uMAX(0); ix < WIDTH_IN; ++ix) { *LnOutGrad += *LnInGrad; *LnOutGrad += *(LnInGrad+1); LnOutGrad += 1; LnInGrad += 2; }
 			}}
 
 			SX_MC_LAYER_NEXT_FIT;
 		}
-
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Get output error in respect to argument.
-		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplErr.hpp"
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Multi threading utility.

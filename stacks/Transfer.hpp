@@ -82,4 +82,16 @@ namespace sx
 		if constexpr(FN_TRANS == FnTrans::RELU) return reluDer(_RVal);
 		if constexpr(FN_TRANS == FnTrans::PRELU) return preluDer(_RVal, T(0.01));
 	}
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Transfer derivative.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	template<class T, FnTrans FN_TRANS> constexpr inline auto transferDer ( const T _Val )
+	{
+		if constexpr(FN_TRANS == FnTrans::LINEAR) return T(1.0);
+		if constexpr(FN_TRANS == FnTrans::SIGMOID) return sigmoidDer2(_Val);
+		if constexpr(FN_TRANS == FnTrans::TANH) return tanhDer2(_Val);
+		if constexpr(FN_TRANS == FnTrans::RELU) return reluDer(_Val);
+		if constexpr(FN_TRANS == FnTrans::PRELU) return preluDer(_Val, T(0.01));
+	}
 }

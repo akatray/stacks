@@ -9,7 +9,7 @@
 namespace sx
 {
 	constexpr auto VERSION_MAJOR = int(5);
-	constexpr auto VERSION_MINOR = int(5);
+	constexpr auto VERSION_MINOR = int(7);
 	constexpr auto VERSION_PATCH = int(0);
 	constexpr auto ALIGNMENT = int(32);
 }
@@ -25,12 +25,16 @@ namespace sx
 #include "./Network.hpp"
 
 #include "./Layer.hpp"
+#include "./layer/Error.hpp"
 #include "./layer/Dense.hpp"
 
 #include "./layer/Downscale2.hpp"
 #include "./layer/Upscale2.hpp"
 #include "./layer/Conv2.hpp"
-#include "./layer/Conv2Depth.hpp"
+#include "./layer/Conv2Parallel.hpp"
+#include "./layer/Conv2Reduce.hpp"
+
+#include "./layer/Encode2.hpp"
 
 #include "./layer/Filter.hpp"
 #include "./layer/Variation.hpp"
