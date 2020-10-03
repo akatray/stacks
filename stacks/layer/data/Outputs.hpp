@@ -3,6 +3,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #pragma once
 
+
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Neural Networks Experiment.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -13,11 +14,25 @@ namespace sx
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	using namespace fx;
 
+
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Layer data: Output buffers.
+	// Output buffers.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	template<class T, uMAX SZ_OUT, uMAX SZ_GRAD, bool HAS_RAW = true>
+	
+	// Default.
+	template<class T, uMAX SZ_OUT, uMAX SZ_GRAD, FnTrans FN_TRANS>
 	struct LDOutputs
+	{
+		alignas(ALIGNMENT) T OutTrans[SZ_OUT];
+		alignas(ALIGNMENT) T Gradient[SZ_GRAD];
+
+		LDOutputs ( void ) : OutTrans{}, Gradient{} {}
+	};
+
+
+	// Specialization for relu.
+	template<class T, uMAX SZ_OUT, uMAX SZ_GRAD>
+	struct LDOutputs<T, SZ_OUT, SZ_GRAD, FnTrans::RELU>
 	{
 		alignas(ALIGNMENT) T OutTrans[SZ_OUT];
 		alignas(ALIGNMENT) T OutRaw[SZ_OUT];
@@ -26,12 +41,15 @@ namespace sx
 		LDOutputs ( void ) : OutTrans{}, OutRaw{}, Gradient{} {}
 	};
 
+
+	// Specialization for prelu.
 	template<class T, uMAX SZ_OUT, uMAX SZ_GRAD>
-	struct LDOutputs<T, SZ_OUT, SZ_GRAD, false>
+	struct LDOutputs<T, SZ_OUT, SZ_GRAD, FnTrans::PRELU>
 	{
 		alignas(ALIGNMENT) T OutTrans[SZ_OUT];
+		alignas(ALIGNMENT) T OutRaw[SZ_OUT];
 		alignas(ALIGNMENT) T Gradient[SZ_GRAD];
 
-		LDOutputs ( void ) : OutTrans{}, Gradient{} {}
+		LDOutputs ( void ) : OutTrans{}, OutRaw{}, Gradient{} {}
 	};
 }

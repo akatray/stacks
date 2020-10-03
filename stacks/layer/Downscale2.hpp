@@ -53,8 +53,8 @@ namespace sx
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	class Downscale2 :
 		public Layer<T>,
-		LDOutputs<T, (WIDTH_IN / 2) * (HEIGHT_IN / 2) * DEPTH_IN, WIDTH_IN * HEIGHT_IN * DEPTH_IN, false>,
-		std::conditional_t<(FN_POOL == FnPool::MIN) || (FN_POOL == FnPool::MAX), Downscale2Route<(WIDTH_IN / 2) * (HEIGHT_IN / 2) * DEPTH_IN>, Nothing>
+		LDOutputs<T, (WIDTH_IN / 2) * (HEIGHT_IN / 2) * DEPTH_IN, WIDTH_IN * HEIGHT_IN * DEPTH_IN, FnTrans::TANH>,
+		std::conditional_t<(FN_POOL == FnPool::MIN) || (FN_POOL == FnPool::MAX), Downscale2Route<(WIDTH_IN / 2) * (HEIGHT_IN / 2) * DEPTH_IN>, None1>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------

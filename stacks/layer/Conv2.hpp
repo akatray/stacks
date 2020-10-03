@@ -3,10 +3,6 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Imports.
-// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-#include "./../Layer.hpp"
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Neural Networks Experiment.
@@ -17,6 +13,7 @@ namespace sx
 	// Expand namespaces.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	using namespace fx;
+
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Convolutional layer 2d.
@@ -29,7 +26,7 @@ namespace sx
 		uMAX DEPTH_IN,
 		uMAX KERNELS = 1,
 		uMAX RADIUS = 1,
-		FnTrans FN_TRANS = FnTrans::RELU,
+		FnTrans FN_TRANS = FnTrans::PRELU,
 		sx::FnInitWeights FN_INIT_W = sx::FnInitWeights::NRM_RELU,
 		FnOptim FN_OPTIM = FnOptim::ADAM,
 		FnErr FN_ERR = FnErr::MSE
@@ -37,9 +34,9 @@ namespace sx
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	class Conv2 :
 		public Layer<T>,
-		LDOutputs<T, WIDTH_IN*HEIGHT_IN*KERNELS, WIDTH_IN*HEIGHT_IN*DEPTH_IN, true>,
+		LDOutputs<T, WIDTH_IN*HEIGHT_IN*KERNELS, WIDTH_IN*HEIGHT_IN*DEPTH_IN, FnTrans::RELU>,
 		LDWeights<T, FN_OPTIM, uMAX(((RADIUS*2)+1)*((RADIUS*2)+1))*KERNELS*DEPTH_IN, WIDTH_IN*HEIGHT_IN*DEPTH_IN, WIDTH_IN*HEIGHT_IN*KERNELS, FN_INIT_W>,
-		LDBiases<T, WIDTH_IN*HEIGHT_IN*KERNELS, 0, 0, needBufM<T,FN_OPTIM>(), needBufV<T,FN_OPTIM>()>
+		LDBiases<T, WIDTH_IN*HEIGHT_IN*KERNELS, 0, 0, FN_OPTIM>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -59,10 +56,12 @@ namespace sx
 		constexpr static auto SZ_IN = WIDTH_IN * HEIGHT_IN * DEPTH_IN;
 		constexpr static auto SZ_OUT = WIDTH_IN * HEIGHT_IN * KERNELS;
 		
+
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Generated functions.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_MC_LAYER_TRIVIAL(Conv2, SZ_OUT, this->OutTrans, this->Gradient)
+
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Execute. Optimized for sequential access.
@@ -73,9 +72,10 @@ namespace sx
 
 			for(auto k = uMAX(0); k < KERNELS; ++k)
 			{ 
-				auto LnKernel = this->Weights + math::index_c(0, k, SZ_KER);
 				for(auto d = uMAX(0); d < DEPTH_IN; ++d) { for(auto y = RADIUS; y < (HEIGHT_IN - RADIUS); ++y)
 				{
+					auto LnKernel = this->Weights + math::index_c(0, d, k, SZ_KER, DEPTH_IN);
+					
 					auto LnOutRw = this->OutRaw + math::index_c(RADIUS, y, k, WIDTH_IN, HEIGHT_IN);
 					for(auto kr = uMAX(0); kr < SZ_KER_EDGE; ++kr)
 					{
@@ -99,6 +99,7 @@ namespace sx
 			SX_MC_LAYER_NEXT_EXE;
 		}
 
+
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Backpropagate. Optimized for memory order.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -106,7 +107,8 @@ namespace sx
 		{
 			memZero(SZ_IN, this->Gradient);
 
-			if(this->Front)
+
+			if(!this->IsLocked)
 			{
 				// For each kernel.
 				auto PtrFrontGradient = this->Front->gradient();
@@ -115,17 +117,21 @@ namespace sx
 				for(auto k = uMAX(0); k < KERNELS; ++k)
 				{ 
 					// For each channel.
-					const auto OffKernel = math::index_c(0, k, SZ_KER);
-					auto LnKernel = this->Weights + OffKernel;
-					auto LnKernelDlt = this->WeightsDlt + OffKernel;
 					for(auto d = uMAX(0); d < DEPTH_IN; ++d) { for(auto y = RADIUS; y < (HEIGHT_IN - RADIUS); ++y)
 					{
+						const auto OffKernel = math::index_c(0, d, k, SZ_KER, DEPTH_IN);
+						auto LnKernel = this->Weights + OffKernel;
+						auto LnKernelDlt = this->WeightsDlt + OffKernel;
+
+
 						// Calculate derivatives of horizontal line.
 						const auto OffOut = math::index_c(0, y, k, WIDTH_IN, HEIGHT_IN);
 						auto LnOutUn = PtrTrDerSrc + OffOut;
 						T LnDerTrans[WIDTH_IN];
 						memCopy(WIDTH_IN, LnDerTrans, PtrFrontGradient + OffOut);
 						for(auto x = 0; x < WIDTH_IN; ++x) LnDerTrans[x] *= transferDer<T,FN_TRANS>(LnOutUn[x]);
+						//for(auto x = 0; x < WIDTH_IN; ++x) LnDerTrans[x] = std::clamp(transferDer<T,FN_TRANS>(LnOutUn[x]) * LnDerTrans[x], T(-.1), T(.1));
+						
 						
 						// Update bias deltas of horizontal line.
 						auto LnBiasDlt = this->BiasesDlt + OffOut;
@@ -155,35 +161,44 @@ namespace sx
 				}
 			}
 
-			else throw fx::Error("sx"s, "Conv2"s, "fit"s, 0, "Can't be last layer!"s);
+			else
+			{
+
+			}
 
 			SX_MC_LAYER_NEXT_FIT;
 		}
+
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Get output error in respect to argument.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		#include "./data/ComImplErr.hpp"
 
+
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Reset delta parameters.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		#include "./data/ComImplReset.hpp"
+
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Apply optimizations and update parameters.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		#include "./data/ComImplApply.hpp"
 
+
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Store parameters to stream.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		#include "./data/ComImplStore.hpp"
 
+
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Load parameters from stream.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		#include "./data/ComImplLoad.hpp"
+
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Multi threading utility.

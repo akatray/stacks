@@ -3,6 +3,7 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 #pragma once
 
+
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Neural Networks Experiment.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -13,15 +14,19 @@ namespace sx
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	using namespace fx;
 
+
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Macros.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	#define SX_MC_BIASES_INIT rng::rbuf(SZ_BUF, this->Biases, T(0.0001), T(0.001));
 
+
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Layer data: Biases buffers.
+	// Biases buffers.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	template<class T, uMAX SZ_BUF, uMAX SZ_IN, uMAX SZ_OUT, bool HAS_BUF_M = true, bool HAS_BUF_V = true>
+	
+	// Default: adam.
+	template<class T, uMAX SZ_BUF, uMAX SZ_IN, uMAX SZ_OUT, FnOptim FN_OPTIM>
 	struct LDBiases
 	{
 		alignas(ALIGNMENT) T Biases[SZ_BUF];
@@ -32,26 +37,26 @@ namespace sx
 		LDBiases ( void ) : Biases{}, BiasesDlt{}, BiasesDltM{}, BiasesDltV{} { SX_MC_BIASES_INIT }
 	};
 
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
+	// Specialization for momentum.
 	template<class T, uMAX SZ_BUF, uMAX SZ_IN, uMAX SZ_OUT>
-	struct LDBiases<T, SZ_BUF, SZ_IN, SZ_OUT, false, false>
-	{
-		alignas(ALIGNMENT) T Biases[SZ_BUF];
-		alignas(ALIGNMENT) T BiasesDlt[SZ_BUF];
-
-		LDBiases ( void ) : Biases{}, BiasesDlt{} { SX_MC_BIASES_INIT }
-	};
-
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-	template<class T, uMAX SZ_BUF, uMAX SZ_IN, uMAX SZ_OUT>
-	struct LDBiases<T, SZ_BUF, SZ_IN, SZ_OUT, true, false>
+	struct LDBiases<T, SZ_BUF, SZ_IN, SZ_OUT, FnOptim::MOMENTUM>
 	{
 		alignas(ALIGNMENT) T Biases[SZ_BUF];
 		alignas(ALIGNMENT) T BiasesDlt[SZ_BUF];
 		alignas(ALIGNMENT) T BiasesDltM[SZ_BUF];
 
 		LDBiases ( void ) : Biases{}, BiasesDlt{}, BiasesDltM{} { SX_MC_BIASES_INIT }
+	};
+
+
+	// Specialization for none.
+	template<class T, uMAX SZ_BUF, uMAX SZ_IN, uMAX SZ_OUT>
+	struct LDBiases<T, SZ_BUF, SZ_IN, SZ_OUT, FnOptim::NONE>
+	{
+		alignas(ALIGNMENT) T Biases[SZ_BUF];
+		alignas(ALIGNMENT) T BiasesDlt[SZ_BUF];
+
+		LDBiases ( void ) : Biases{}, BiasesDlt{} { SX_MC_BIASES_INIT }
 	};
 }

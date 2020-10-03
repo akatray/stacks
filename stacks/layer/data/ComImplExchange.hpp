@@ -7,6 +7,22 @@
 			memCopy(SZ_BUF_B, Master->BiasesDlt, this->BiasesDlt);
 			memCopy(SZ_BUF_W, this->Weights, Master->Weights);
 			memCopy(SZ_BUF_B, this->Biases, Master->Biases);
+			
+			/*
+			for(auto i = uMAX(0); i < SZ_BUF_W; ++i)
+			{
+				Master->Weights[i] = (Master->Weights[i] + this->Weights[i]) / 2;
+			}
+
+			for(auto i = uMAX(0); i < SZ_BUF_B; ++i)
+			{
+				Master->Biases[i] = (Master->Biases[i] + this->Biases[i]) / 2;
+			}
+			
+			memCopy(SZ_BUF_W, this->Weights, Master->Weights);
+			memCopy(SZ_BUF_B, this->Biases, Master->Biases);
+			*/
+
 
 			if(this->Front && _Chain) this->Front->exchange(Master->Front);
 		}

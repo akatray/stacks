@@ -31,7 +31,7 @@ namespace sx
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	class Upscale2 :
 		public Layer<T>,
-		LDOutputs<T, (WIDTH_IN*2)*(HEIGHT_IN*2)*DEPTH_IN, WIDTH_IN*HEIGHT_IN*DEPTH_IN, false>
+		LDOutputs<T, (WIDTH_IN*2)*(HEIGHT_IN*2)*DEPTH_IN, WIDTH_IN*HEIGHT_IN*DEPTH_IN, FnTrans::TANH>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -61,6 +61,7 @@ namespace sx
 				for(auto ix = uMAX(0); ix < WIDTH_IN; ++ix) { *LnOut = *LnIn; *(LnOut+1) = *LnIn; LnIn += 1; LnOut += 2; }
 			}}
 
+
 			SX_MC_LAYER_NEXT_EXE;
 		}
 
@@ -69,9 +70,8 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_FIT final
 		{
-			if(!this->Front) throw iMAX(-1);
-			
 			memZero(SZ_IN, this->Gradient);
+
 
 			auto LnInGrad = this->Front->gradient();
 			auto LnOutGrad = this->Gradient;
@@ -81,6 +81,7 @@ namespace sx
 				LnOutGrad -= WIDTH_IN;
 				for(auto ix = uMAX(0); ix < WIDTH_IN; ++ix) { *LnOutGrad += *LnInGrad; *LnOutGrad += *(LnInGrad+1); LnOutGrad += 1; LnInGrad += 2; }
 			}}
+
 
 			SX_MC_LAYER_NEXT_FIT;
 		}
