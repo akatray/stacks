@@ -26,10 +26,9 @@ namespace sx
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	// Load samples cache.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	template<class T> auto loadSamplesCache ( const str& _CacheFile ) -> vec<vec<T>>
+	template<class T> auto loadSamplesCache ( const str& _CacheFile )
 	{
 		// Open cache file.
-		std::cout << "Loading cache file ["s << _CacheFile << "].\n"s;
 		auto CacheFile = std::ifstream(_CacheFile, std::ios::binary);
 		if(CacheFile.is_open())
 		{
@@ -48,16 +47,41 @@ namespace sx
 			auto Samples = vec<vec<T>>();
 			for(auto s = uMAX(0); s < SamplesCount; ++s)
 			{
-				Samples.push_back(vec<T>(SampleSize));
+				Samples.push_back(vec<T>(SampleSize / sizeof(T)));
 				CacheFile.read(reinterpret_cast<char*>(Samples.back().data()), SampleSize);
-
-				std::cout << "Loading ["s << s << " of " << SamplesCount << "].\n"s;
+				std::cout << "Loading cache file [" << _CacheFile << "][" << s+1 << "/" << SamplesCount << "].\n";
 			}
 
 
 			// Finish.
-			std::cout << "Loading completed.\n"s;
 			return std::move(Samples);
+		}
+	}
+
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Store samples cache.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	template<class T> auto storeSamplesCache ( const str& _CacheFile, const vec<vec<T>>& _Samples )
+	{
+		// Open cache file.
+		auto CacheFile = std::ofstream(_CacheFile, std::ios::binary);
+		if(CacheFile.is_open())
+		{
+			// Metadata.
+			const auto SamplesCount = u64(_Samples.size());
+			const auto SampleSize = u64(_Samples[0].size() * sizeof(T));
+
+			// Store samples.
+			for(auto s = uMAX(0); s < SamplesCount; ++s)
+			{
+				CacheFile.write(reinterpret_cast<const char*>(_Samples[s].data()), SampleSize);
+				std::cout << "Storing cache file [" << _CacheFile << "][" << s+1 << "/" << SamplesCount << "].\n";
+			}
+
+			// Write metadata.
+			CacheFile.write(reinterpret_cast<const char*>(&SamplesCount), sizeof(u64));
+			CacheFile.write(reinterpret_cast<const char*>(&SampleSize), sizeof(u64));
 		}
 	}
 
