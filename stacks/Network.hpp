@@ -197,35 +197,72 @@ namespace sx
 		auto fit ( const T* _Target, const T _ErrParam, const bool _Connect = true ) -> void { if(_Connect) this->connect(); return this->back()->fit(_Target, _ErrParam); }
 		auto apply ( const rMAX _Rate, const uMAX _Iter, const bool _Connect = true ) -> void { if(_Connect) this->connect(); return this->front()->apply(_Rate, _Iter); }
 
-		//auto copyParams ( ptr _Src, const bool _Connect = true ) -> void { if(_Connect) this->connect(); return this->front()->copy(_Src); }
-		//auto copyParamsDlt ( ptr _Src, const bool _Connect = true ) -> void { if(_Connect) this->connect(); return this->front()->merge(_Src); }
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Store network to file.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		template<class I = NetworkInfo> auto storeToFile ( const std::string& _Filename, const I* _Info = nullptr, const bool _Connect = true )
+		auto storeToFile ( const std::string& _Filename, const bool _Connect = true )
 		{
 			if(_Connect) this->connect();
 
+
 			auto File = std::ofstream(_Filename, std::ios::binary);
+			
 			if(File.is_open())
 			{
-				if(_Info) File.write(reinterpret_cast<const char*>(_Info), sizeof(I));
 				this->front()->store(File);
 			}
 		}
 
+
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Load network from file.
+		// Store network to file with custom data.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		template<class I = NetworkInfo> auto loadFromFile ( const std::string& _Filename, I* _Info = nullptr, const bool _Connect = true )
+		template<class DATA> auto storeToFile ( const std::string& _Filename, const DATA& _Data, const bool _Connect = true )
 		{
 			if(_Connect) this->connect();
 
-			auto File = std::ifstream(_Filename, std::ios::binary);
+
+			auto File = std::ofstream(_Filename, std::ios::binary);
+
 			if(File.is_open())
 			{
-				if(_Info) File.read(reinterpret_cast<char*>(_Info), sizeof(I));
+				File.write(reinterpret_cast<const char*>(&_Data), sizeof(DATA));
+				this->front()->store(File);
+			}
+		}
+
+
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Load network from file.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		auto loadFromFile ( const std::string& _Filename, const bool _Connect = true )
+		{
+			if(_Connect) this->connect();
+
+
+			auto File = std::ifstream(_Filename, std::ios::binary);
+
+			if(File.is_open())
+			{
+				this->front()->load(File);
+			}
+		}
+
+
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Load network from file with custom data.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		template<class DATA> auto loadFromFile ( const std::string& _Filename, DATA& _Data, const bool _Connect = true )
+		{
+			if(_Connect) this->connect();
+
+
+			auto File = std::ifstream(_Filename, std::ios::binary);
+
+			if(File.is_open())
+			{
+				File.read(reinterpret_cast<char*>(&_Data), sizeof(DATA));
 				this->front()->load(File);
 			}
 		}

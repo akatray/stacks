@@ -57,7 +57,10 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_FIT final
 		{
-			if(!this->Front) for(auto g = uMAX(0); g < SIZE; ++g) this->Gradient[g] = errorDer<T,FN_ERR>(_Target[g], this->Input[g]);
+			if(!this->Front)
+			{
+				for(auto g = uMAX(0); g < SIZE; ++g) this->Gradient[g] = errorDer<T,FN_ERR>(_Target[g], this->Input[g]);
+			}
 			else memCopy(SIZE,  this->Gradient, this->Front->gradient());
 			
 			SX_MC_LAYER_NEXT_FIT;

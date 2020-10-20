@@ -86,7 +86,7 @@ namespace sx
 	template<class T, FnErr FN_ERR> constexpr inline auto errorDer ( const T _Real, const T _Predicted )
 	{
 		if constexpr(FN_ERR == FnErr::MSE) return (_Predicted - _Real) * T(2);
-		if constexpr(FN_ERR == FnErr::MAE) return (_Predicted - _Real) / std::abs(_Predicted - _Real);
+		if constexpr(FN_ERR == FnErr::MAE) return (_Predicted - _Real) / std::max(std::abs(_Predicted - _Real), T(1e-15));
 		if constexpr(FN_ERR == FnErr::BCE) return (_Predicted - _Real) / std::max((T(1) - _Predicted) * _Predicted, T(1e-15));
 	}
 }

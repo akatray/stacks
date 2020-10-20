@@ -70,7 +70,7 @@ namespace sx
 		{
 			if constexpr(FN_INIT_W == FnInitWeights::DEFAULT)
 			{
-				rng::rbuf(SZ_BUF, this->Weights, T(-0.00001), T(0.00001));
+				rng::rbuf(SZ_BUF, this->Weights, T(0.00001), T(0.0001));
 			}
 
 			if constexpr(FN_INIT_W == FnInitWeights::NRM_SIGMOID)

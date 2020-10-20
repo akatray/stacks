@@ -52,4 +52,15 @@ namespace sx
 
 		LDOutputs ( void ) : OutTrans{}, OutRaw{}, Gradient{} {}
 	};
+
+	// Specialization for elu.
+	template<class T, uMAX SZ_OUT, uMAX SZ_GRAD>
+	struct LDOutputs<T, SZ_OUT, SZ_GRAD, FnTrans::ELU>
+	{
+		alignas(ALIGNMENT) T OutTrans[SZ_OUT];
+		alignas(ALIGNMENT) T OutRaw[SZ_OUT];
+		alignas(ALIGNMENT) T Gradient[SZ_GRAD];
+
+		LDOutputs ( void ) : OutTrans{}, OutRaw{}, Gradient{} {}
+	};
 }
