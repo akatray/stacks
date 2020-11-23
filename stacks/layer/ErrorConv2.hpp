@@ -24,23 +24,38 @@ namespace sx
 	template
 	<
 		class T,
-		uMAX SIZE,
+		uMAX WIDTH_IN,
+		uMAX HEIGHT_IN,
+		uMAX DEPTH_IN,
+		uMAX RADIUS = 1,
 		FnErr FN_ERR = FnErr::MSE
 	>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	class Error :
+	class ErrorConv2 :
 		public Layer<T>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		// Compile time constants.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+		constexpr static auto SZ_KER_EDGE = uMAX(RADIUS * 2 + 1);
+		constexpr static auto SZ_KER = SZ_KER_EDGE * SZ_KER_EDGE;
+
+		constexpr static auto LINE_BEG = RADIUS;
+		constexpr static auto LINE_END = WIDTH_IN - RADIUS;
+		constexpr static auto LINE_LEN = WIDTH_IN - (RADIUS * 2);
+
+		constexpr static auto SZ_IN = WIDTH_IN * HEIGHT_IN * DEPTH_IN;
+
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Members.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		alignas(ALIGNMENT) T Gradient[SIZE];
+		alignas(ALIGNMENT) T Gradient[SZ_IN];
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Generated functions.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		SX_MC_LAYER_TRIVIAL(Error, SIZE, this->Back->out(), this->Gradient)
+		SX_MC_LAYER_TRIVIAL(ErrorConv2, SZ_IN, this->Back->out(), this->Gradient)
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Execute.
@@ -59,11 +74,23 @@ namespace sx
 		{
 			if(!this->Front)
 			{
-				for(auto g = uMAX(0); g < SIZE; ++g) this->Gradient[g] = errorDer<T,FN_ERR>(_Target[g], this->Input[g]);
+				memZero(SZ_IN, this->Gradient);
+
+
+				for(auto d = uMAX(0); d < DEPTH_IN; ++d) { for(auto y = RADIUS; y < (HEIGHT_IN - RADIUS); ++y)
+				{
+					auto LineGrad = this->Gradient + math::index_c(RADIUS, y, WIDTH_IN);
+
+					for(auto kr = uMAX(0); kr < SZ_KER_EDGE; ++kr)
+					{
+						auto LinePred = this->Input + math::index_c(0, y - RADIUS + kr, d, WIDTH_IN, HEIGHT_IN);
+						auto LineReal = _Target + math::index_c(0, y - RADIUS + kr, d, WIDTH_IN, HEIGHT_IN);
+						for(auto x = uMAX(0); x < LINE_LEN; ++x) for(auto w = uMAX(0); w < SZ_KER_EDGE; ++w) LineGrad[x] += errorDer<T,FN_ERR>(LineReal[x+w], LinePred[x+w]) / SZ_KER;
+					}
+				}}
 			}
-			else memCopy(SIZE,  this->Gradient, this->Front->gradient());
 
-
+			else memCopy(SZ_IN,  this->Gradient, this->Front->gradient());
 
 			
 			SX_MC_LAYER_NEXT_FIT;
@@ -72,7 +99,7 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Get output error in respect to argument.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		SX_FNSIG_LAYER_ERR final { return error<T,FN_ERR>(SIZE, _Target, this->Back->out()); }
+		SX_FNSIG_LAYER_ERR final { return error<T,FN_ERR>(SZ_IN, _Target, this->Back->out()); }
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Store parameters to stream.

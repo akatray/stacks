@@ -23,15 +23,14 @@ namespace sx
 		class T,
 		uMAX SZ_IN,
 		uMAX SZ_OUT,
-		FnTrans FN_TRANS = FnTrans::TANH,
-		sx::FnInitWeights FN_INIT_W = sx::FnInitWeights::NRM_TANH,
+		class FN_TRANS,
 		FnOptim FN_OPTIM = FnOptim::ADAM
 	>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	class Dense :
 		public Layer<T>,
-		LDOutputs<T, SZ_OUT, SZ_IN, FN_TRANS>,
-		LDWeights<T, FN_OPTIM, SZ_IN*SZ_OUT, SZ_IN, SZ_OUT, FN_INIT_W>,
+		LDOutputs<T, SZ_OUT, SZ_IN, FnTrans::RELU>,
+		LDWeights<T, FN_OPTIM, SZ_IN*SZ_OUT, SZ_IN, SZ_OUT, FnInitWeights::NRM_RELU>,
 		LDBiases<T, SZ_OUT, SZ_IN, SZ_OUT, FN_OPTIM>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
@@ -55,15 +54,15 @@ namespace sx
 		{
 			for(auto o = uMAX(0); o < SZ_OUT; ++o)
 			{
-				if constexpr(needRaw<T,FN_TRANS>())
+				if constexpr(FN_TRANS::RAW)
 				{
 					this->OutRaw[o] = std::inner_product(this->Input, this->Input + SZ_IN, this->Weights + math::index_c(0, o, SZ_IN), T(0)) + this->Biases[o];
-					this->OutTrans[o] = transfer<T,FN_TRANS>(this->OutRaw[o]);
+					this->OutTrans[o] = FN_TRANS::trans(this->OutRaw[o]);
 				}
 
 				else
 				{
-					this->OutTrans[o] = transfer<T,FN_TRANS>(std::inner_product(this->Input, this->Input + SZ_IN, this->Weights + math::index_c(0, o, SZ_IN), T(0)) + this->Biases[o]);
+					this->OutTrans[o] =  FN_TRANS::trans(std::inner_product(this->Input, this->Input + SZ_IN, this->Weights + math::index_c(0, o, SZ_IN), T(0)) + this->Biases[o]);
 				}
 			}
 
@@ -79,14 +78,14 @@ namespace sx
 			memZero(SZ_IN, this->Gradient);
 
 			auto OutNeeded = this->OutTrans;
-			if constexpr(needRaw<T,FN_TRANS>()) OutNeeded = this->OutRaw;
+			if constexpr(FN_TRANS::RAW) OutNeeded = this->OutRaw;
 			
 			if(!this->IsLocked)
 			{
 				for(auto o = uMAX(0); o < SZ_OUT; ++o)
 				{
 					const auto DerErr = this->Front->gradient()[o];
-					const auto DerTrans = std::clamp(transferDer<T,FN_TRANS>(OutNeeded[o]) * DerErr, T(-1), T(1));
+					const auto DerTrans = std::clamp(FN_TRANS::der(OutNeeded[o]) * DerErr, T(-1), T(1));
 
 					vops::mulVecByConstAddToOut(SZ_IN, this->Gradient, &this->Weights[math::index_c(0, o, SZ_IN)], DerTrans);
 					vops::mulVecByConstAddToOut(SZ_IN, &this->WeightsDlt[math::index_c(0, o, SZ_IN)], this->Input, DerTrans);
@@ -99,7 +98,7 @@ namespace sx
 				for(auto o = uMAX(0); o < SZ_OUT; ++o)
 				{
 					const auto DerErr = this->Front->gradient()[o];
-					const auto DerTrans = std::clamp(transferDer<T,FN_TRANS>(OutNeeded[o]) * DerErr, T(-1), T(1));
+					const auto DerTrans = std::clamp(FN_TRANS::der(OutNeeded[o]) * DerErr, T(-1), T(1));
 
 					vops::mulVecByConstAddToOut(SZ_IN, this->Gradient, &this->Weights[math::index_c(0, o, SZ_IN)], DerTrans);
 				}

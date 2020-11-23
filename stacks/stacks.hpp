@@ -39,6 +39,9 @@ namespace sx
 #include "./Layer.hpp"
 
 #include "./layer/Error.hpp"
+#include "./layer/ErrorConv2.hpp"
+
+#include "./layer/Filter.hpp"
 
 #include "./layer/Dense.hpp"
 

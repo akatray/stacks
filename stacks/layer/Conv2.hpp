@@ -26,16 +26,14 @@ namespace sx
 		uMAX DEPTH_IN,
 		uMAX KERNELS = 1,
 		uMAX RADIUS = 1,
-		FnTrans FN_TRANS = FnTrans::PRELU,
-		sx::FnInitWeights FN_INIT_W = sx::FnInitWeights::NRM_RELU,
-		FnOptim FN_OPTIM = FnOptim::ADAM,
-		FnErr FN_ERR = FnErr::MSE
+		bool USE_BIASES = true,
+		class FN_TRANS = FnTrRelu<T>,
+		FnOptim FN_OPTIM = FnOptim::ADAM
 	>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	class Conv2 :
 		public Layer<T>,
-		LDOutputs<T, WIDTH_IN*HEIGHT_IN*KERNELS, WIDTH_IN*HEIGHT_IN*DEPTH_IN, FnTrans::RELU>,
-		LDWeights<T, FN_OPTIM, uMAX(((RADIUS*2)+1)*((RADIUS*2)+1))*KERNELS*DEPTH_IN, WIDTH_IN*HEIGHT_IN*DEPTH_IN, WIDTH_IN*HEIGHT_IN*KERNELS, FN_INIT_W>,
+		LDWeights<T, FN_OPTIM, uMAX(((RADIUS*2)+1)*((RADIUS*2)+1))*KERNELS*DEPTH_IN, WIDTH_IN*HEIGHT_IN*DEPTH_IN, WIDTH_IN*HEIGHT_IN*KERNELS, FnInitWeights::DEFAULT>,
 		LDBiases<T, WIDTH_IN*HEIGHT_IN*KERNELS, 0, 0, FN_OPTIM>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
@@ -57,6 +55,10 @@ namespace sx
 		constexpr static auto SZ_OUT = WIDTH_IN * HEIGHT_IN * KERNELS;
 		
 
+		alignas(ALIGNMENT) T OutTrans[SZ_OUT];
+		alignas(ALIGNMENT) T OutTemp[SZ_OUT];
+		alignas(ALIGNMENT) T Gradient[SZ_IN];
+
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Generated functions.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -68,33 +70,32 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_EXE final
 		{
-			memZero(SZ_OUT, this->OutRaw);
+			memZero(SZ_OUT, this->OutTemp);
+
 
 			for(auto k = uMAX(0); k < KERNELS; ++k)
 			{ 
+				// Apply kernel on input.
 				for(auto d = uMAX(0); d < DEPTH_IN; ++d) { for(auto y = RADIUS; y < (HEIGHT_IN - RADIUS); ++y)
 				{
-					auto LnKernel = this->Weights + math::index_c(0, d, k, SZ_KER, DEPTH_IN);
-					
-					auto LnOutRw = this->OutRaw + math::index_c(RADIUS, y, k, WIDTH_IN, HEIGHT_IN);
+					auto LineKernel = this->Weights + math::index_c(0, d, k, SZ_KER, DEPTH_IN);
+					auto LineOutTemp = this->OutTemp + math::index_c(RADIUS, y, k, WIDTH_IN, HEIGHT_IN);
+
 					for(auto kr = uMAX(0); kr < SZ_KER_EDGE; ++kr)
 					{
-						auto LnIn = this->Input + math::index_c(0, y - RADIUS + kr, d, WIDTH_IN, HEIGHT_IN);
-						for(auto x = uMAX(0); x < LINE_LEN; ++x)
-						{
-							for(auto w = uMAX(0); w < SZ_KER_EDGE; ++w) LnOutRw[x] += LnIn[x+w] * LnKernel[math::index_c(w, kr, SZ_KER_EDGE)];
-						}
-					}
-
-					auto LnBias = this->Biases + math::index_c(RADIUS, y, k, WIDTH_IN, HEIGHT_IN);
-					auto LnOutTr = this->OutTrans + math::index_c(RADIUS, y, k, WIDTH_IN, HEIGHT_IN);
-					for(auto x = uMAX(0); x < LINE_LEN; ++x)
-					{
-						LnOutRw[x] += LnBias[x];
-						LnOutTr[x] = transfer<T,FN_TRANS>(LnOutRw[x]);
+						auto LineInput = this->Input + math::index_c(0, y - RADIUS + kr, d, WIDTH_IN, HEIGHT_IN);
+						for(auto x = uMAX(0); x < LINE_LEN; ++x) for(auto w = uMAX(0); w < SZ_KER_EDGE; ++w) LineOutTemp[x] += LineInput[x+w] * LineKernel[math::index_c(w, kr, SZ_KER_EDGE)];
 					}
 				}}
 			}
+
+			// Apply biases and transfer values.
+			for(auto o = uMAX(0); o < (WIDTH_IN * HEIGHT_IN * KERNELS); ++o)
+			{
+				if constexpr(USE_BIASES) this->OutTemp[o] += this->Biases[o];
+				this->OutTrans[o] = FN_TRANS::trans(this->OutTemp[o]);
+			}
+
 
 			SX_MC_LAYER_NEXT_EXE;
 		}
@@ -110,54 +111,57 @@ namespace sx
 
 			if(!this->IsLocked)
 			{
-				// For each kernel.
+				T LineDerTrans[LINE_LEN];
 				auto PtrFrontGradient = this->Front->gradient();
-				auto PtrTrDerSrc = this->OutRaw;
-				if constexpr(!needRaw<T,FN_TRANS>()) PtrTrDerSrc = this->OutTrans;
+				auto PtrTrDerSrc = this->OutTemp;
+				if constexpr(!FN_TRANS::RAW) PtrTrDerSrc = this->OutTrans;
+
 				for(auto k = uMAX(0); k < KERNELS; ++k)
 				{ 
 					// For each channel.
 					for(auto d = uMAX(0); d < DEPTH_IN; ++d) { for(auto y = RADIUS; y < (HEIGHT_IN - RADIUS); ++y)
 					{
 						const auto OffKernel = math::index_c(0, d, k, SZ_KER, DEPTH_IN);
-						auto LnKernel = this->Weights + OffKernel;
-						auto LnKernelDlt = this->WeightsDlt + OffKernel;
+						auto LineKernel = this->Weights + OffKernel;
+						auto LineKernelDlt = this->WeightsDlt + OffKernel;
 
-
-						// Calculate derivatives of horizontal line.
-						const auto OffOut = math::index_c(0, y, k, WIDTH_IN, HEIGHT_IN);
-						auto LnOutUn = PtrTrDerSrc + OffOut;
-						T LnDerTrans[WIDTH_IN];
-						memCopy(WIDTH_IN, LnDerTrans, PtrFrontGradient + OffOut);
-						for(auto x = 0; x < WIDTH_IN; ++x) LnDerTrans[x] *= transferDer<T,FN_TRANS>(LnOutUn[x]);
-						//for(auto x = 0; x < WIDTH_IN; ++x) LnDerTrans[x] = std::clamp(transferDer<T,FN_TRANS>(LnOutUn[x]) * LnDerTrans[x], T(-.1), T(.1));
+						const auto OffOut =  math::index_c(RADIUS, y, k, WIDTH_IN, HEIGHT_IN);
+						auto LineOutUn = PtrTrDerSrc + OffOut;
 						
-						
-						// Update bias deltas of horizontal line.
-						auto LnBiasDlt = this->BiasesDlt + OffOut;
-						for(auto x = 0; x < WIDTH_IN; ++x) LnBiasDlt[x] += LnDerTrans[x];
+						memCopy(LINE_LEN, LineDerTrans, PtrFrontGradient + OffOut);
+						for(auto x = 0; x < LINE_LEN; ++x) LineDerTrans[x] *= FN_TRANS::der(LineOutUn[x]);;
 
-						// For each kernel row of horizontal line.
 						for(auto kr = uMAX(0); kr < SZ_KER_EDGE; ++kr)
-						{
-							// For each pixel in horizontal line.
+						{ 
 							const auto OffIn = math::index_c(0, y - RADIUS + kr, d, WIDTH_IN, HEIGHT_IN);
-							auto LnIn = this->Input + OffIn;
-							auto LnGrad = this->Gradient + OffIn;
+							auto LineInput = this->Input + OffIn;
+							auto LineGrad = this->Gradient + OffIn;
+
 							for(auto x = 0; x < LINE_LEN; ++x)
 							{
-								// For each weight in kernel row.
-								const auto IdxOut = x+RADIUS;
 								for(auto w = uMAX(0); w < SZ_KER_EDGE; ++w)
 								{
 									const auto IdxKer = math::index_c(w, kr, SZ_KER_EDGE);
-									const auto IdxIn = x+w;
-									LnKernelDlt[IdxKer] += LnIn[IdxIn] * LnDerTrans[IdxOut];
-									LnGrad[IdxIn] += LnKernel[IdxKer] * LnDerTrans[IdxOut];
+									LineKernelDlt[IdxKer] += LineInput[x+w] * LineDerTrans[x];
+									LineGrad[x+w] += LineKernel[IdxKer] * LineDerTrans[x];
 								}
 							}
 						}
 					}}
+				}
+
+				// Apply biases and transfer values.
+				if constexpr(USE_BIASES)
+				{
+					auto OutNeeded = this->OutTrans;
+					if constexpr(FN_TRANS::RAW) OutNeeded = this->OutTemp;
+
+					for(auto o = uMAX(0); o < (WIDTH_IN * HEIGHT_IN * KERNELS); ++o)
+					{
+						const auto DerErr = this->Front->gradient()[o];
+						const auto DerTrans = FN_TRANS::der(OutNeeded[o]) * DerErr;
+						this->BiasesDlt[o] += DerTrans;
+					}
 				}
 			}
 

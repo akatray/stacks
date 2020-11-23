@@ -87,6 +87,37 @@ namespace sx
 	{
 		if constexpr(FN_ERR == FnErr::MSE) return (_Predicted - _Real) * T(2);
 		if constexpr(FN_ERR == FnErr::MAE) return (_Predicted - _Real) / std::max(std::abs(_Predicted - _Real), T(1e-15));
+		/*
+		if constexpr(FN_ERR == FnErr::MAE)
+		{
+			auto E = _Predicted - _Real;
+			
+			if(std::signbit(E))
+			{
+				if(E < -0.5) return -4.0;
+				if(E < -0.25) return -1.0;
+				if(E < -0.1) return -0.5;
+				if(E < -0.01) return -0.01;
+				
+			}
+			else
+			{
+				if(E > 0.5) return 4.0;
+				if(E > 0.25) return 1.0;
+				if(E > 0.1) return 0.5;
+				if(E > 0.01) return 0.01;
+				
+				
+			}
+			*/
+			
+
+			
+			
+
+
+		//return (_Predicted - _Real) * (_Predicted - _Real) * (_Predicted - _Real);
+		//}
 		if constexpr(FN_ERR == FnErr::BCE) return (_Predicted - _Real) / std::max((T(1) - _Predicted) * _Predicted, T(1e-15));
 	}
 }
