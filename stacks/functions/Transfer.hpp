@@ -5,121 +5,118 @@
 
 
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Neural Networks Experiment.
+// Imports.
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+#include <algorithm>
+
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Transfer functions.
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 namespace sx
 {
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Expand namespaces.
+	// Linear transfer function.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	using namespace fx;
-
-
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Initialisation options.
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	enum class FnInitWeights
+	template<class T = DEF_t> struct LinearTr_fn
 	{
-		DEFAULT,
-
-		NRM_SIGMOID,
-		NRM_TANH,
-		NRM_RELU,
-
-		UNI_SIGMOID,
-		UNI_TANH,
-		UNI_RELU
-	};
+		constexpr static auto RAW = false;
 
 
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Weights m buffer.
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	template<class T, uMAX SIZE> struct LDWeightsM
-	{
-		alignas(ALIGNMENT) T WeightsDltM[SIZE];
-		LDWeightsM ( void ) : WeightsDltM{}{}
-	};
-	
-
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Weights m and v buffers.
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	template<class T, uMAX SIZE> struct LDWeightsMV
-	{
-		alignas(ALIGNMENT) T WeightsDltM[SIZE];
-		alignas(ALIGNMENT) T WeightsDltV[SIZE];
-		LDWeightsMV ( void ) : WeightsDltM{}, WeightsDltV{}{}
-	};
-
-
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Weights and delta buffers.
-	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	template<class T, FnOptim FN_OPTIM, uMAX SZ_BUF, uMAX SZ_IN, uMAX SZ_OUT, FnInitWeights FN_INIT_W = FnInitWeights::DEFAULT>
-	struct LDWeights:
-	std::conditional_t<FN_OPTIM == FnOptim::MOMENTUM, LDWeightsM<T, SZ_BUF>, None1>,
-	std::conditional_t<FN_OPTIM == FnOptim::ADAM, LDWeightsMV<T, SZ_BUF>, None2>
-	{
-		alignas(ALIGNMENT) uMAX Iter;
+		constexpr static inline T trans ( const T _X )
+		{ 
+			return _X;
+		}
 		
-		alignas(ALIGNMENT) T Weights[SZ_BUF];
-		alignas(ALIGNMENT) T WeightsDlt[SZ_BUF];
 
-		LDWeights ( void ) : Iter(0), Weights{}, WeightsDlt{}
+		constexpr static inline T der ( const T _FX )
 		{
-			if constexpr(FN_INIT_W == FnInitWeights::DEFAULT)
-			{
-				rng::rbuf(SZ_BUF, this->Weights, T(-0.1), T(0.1));
-				///*
-				T Sum = 0;
-				for(auto o = uMAX(0); o < SZ_BUF; ++o)
-				{
-					Sum += this->Weights[o];
-				}
+			return T(1);
+		}
+	};
 
-				for(auto o = uMAX(0); o < SZ_BUF; ++o)
-				{
-					this->Weights[o] / Sum;
-				}
-				//*/
-			}
-			
-			if constexpr(FN_INIT_W == FnInitWeights::NRM_SIGMOID)
-			{
-				const auto Variance = T(4) * std::sqrt(T(2) / (SZ_IN + SZ_OUT));
-				rng::rbuf_nrm(SZ_BUF, this->Weights, T(0), Variance);
-			}
 
-			if constexpr(FN_INIT_W == FnInitWeights::NRM_TANH)
-			{
-				const auto Variance = std::sqrt(T(2) / (SZ_IN + SZ_OUT));
-				rng::rbuf_nrm(SZ_BUF, this->Weights, T(0), Variance);
-			}
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Sigmoid transfer function.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	template<class T = DEF_t> struct SigmoidTr_fn
+	{
+		constexpr static auto RAW = false;
+		
 
-			if constexpr(FN_INIT_W == FnInitWeights::NRM_RELU)
-			{
-				const auto Variance =  std::sqrt(T(2)) * std::sqrt(T(2) / (SZ_IN + SZ_OUT));
-				rng::rbuf_nrm(SZ_BUF, this->Weights, T(0), Variance);
-			}
+		constexpr static inline T trans ( const T _X )
+		{ 
+			return (T(1) / (T(1) + std::exp(-_X)));
+		}
+		
 
-			if constexpr(FN_INIT_W == FnInitWeights::UNI_SIGMOID)
-			{
-				const auto Range = T(4) * std::sqrt(T(6) / (SZ_IN + SZ_OUT));
-				rng::rbuf(SZ_BUF, this->Weights, -Range, Range);
-			}
+		constexpr static inline T der ( const T _FX )
+		{
+			return (_FX * (T(1) - _FX));
+		}
+	};
 
-			if constexpr(FN_INIT_W == FnInitWeights::UNI_TANH)
-			{
-				const auto Range = std::sqrt(T(6) / (SZ_IN + SZ_OUT));
-				rng::rbuf(SZ_BUF, this->Weights, -Range, Range);
-			}
 
-			if constexpr(FN_INIT_W == FnInitWeights::UNI_RELU)
-			{
-				const auto Range = std::sqrt(T(2)) * std::sqrt(T(6) / (SZ_IN + SZ_OUT));
-				rng::rbuf(SZ_BUF, this->Weights, -Range, Range);
-			}
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Tanh transfer function.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	template<class T = DEF_t> struct TanhTr_fn
+	{
+		constexpr static auto RAW = false;
+
+
+		constexpr static inline T trans ( const T _X )
+		{ 
+			return (T(2) / (T(1) + std::exp(-_X * T(2)))) - T(1);
+		}
+		
+
+		constexpr static inline T der ( const T _FX )
+		{
+			return T(1) - std::pow(_FX, T(2));
+		}
+	};
+
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// RELU transfer function.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	template<class T = DEF_t> struct ReluTr_fn
+	{
+		constexpr static auto RAW = true;
+
+
+		constexpr static inline T trans ( const T _X )
+		{
+			return std::max(T(0), _X);
+		}
+		
+
+		constexpr static inline T der ( const T _X )
+		{
+			return _X > T(0);
+		}
+	};
+
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	// Leaky RELU transfer function.
+	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+	template<class T = DEF_t> struct LeluTr_fn
+	{
+		constexpr static auto RAW = true;
+
+
+		constexpr static inline T trans ( const T _X )
+		{ 
+			if(_X > T(0)) return _X;
+			else return _X * T(0.1);
+		}
+		
+
+		constexpr static inline T der ( const T _X )
+		{
+			if(_X > 0) return T(1);
+			else return T(0.1);
 		}
 	};
 }

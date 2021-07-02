@@ -47,13 +47,12 @@ namespace sx
 		uMAX WIDTH_IN,
 		uMAX HEIGHT_IN,
 		uMAX DEPTH_IN,
-		FnPool FN_POOL = FnPool::MAX,
-		FnErr FN_ERR = FnErr::MSE
+		FnPool FN_POOL = FnPool::MAX
 	>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	class Downscale2 :
 		public Layer<T>,
-		LDOutputs<T, (WIDTH_IN / 2) * (HEIGHT_IN / 2) * DEPTH_IN, WIDTH_IN * HEIGHT_IN * DEPTH_IN, FnTrans::TANH>,
+		Outputs_ld<T, (WIDTH_IN / 2) * (HEIGHT_IN / 2) * DEPTH_IN, WIDTH_IN * HEIGHT_IN * DEPTH_IN>,
 		std::conditional_t<(FN_POOL == FnPool::MIN) || (FN_POOL == FnPool::MAX), Downscale2Route<(WIDTH_IN / 2) * (HEIGHT_IN / 2) * DEPTH_IN>, None1>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
@@ -136,7 +135,7 @@ namespace sx
 					
 					if constexpr((FN_POOL == FnPool::AVG) || (FN_POOL == FnPool::ADD))
 					{
-						SX_MC_LAYER_DER_ERR;
+						auto DerErr = this->Front->gradient()[o];
 						if constexpr(FN_POOL == FnPool::AVG) DerErr *= T(0.25);
 
 						this->Gradient[math::index_c(ix, iy, d, WIDTH_IN, HEIGHT_IN)] = DerErr;
@@ -147,7 +146,7 @@ namespace sx
 
 					if constexpr((FN_POOL == FnPool::MIN) || (FN_POOL == FnPool::MAX))
 					{
-						SX_MC_LAYER_DER_ERR;
+						auto DerErr = this->Front->gradient()[o];
 
 						if(this->Route[o] == 0) this->Gradient[math::index_c(ix, iy, d, WIDTH_IN, HEIGHT_IN)] = DerErr;
 						else if(this->Route[o] == 1) this->Gradient[math::index_c(ix + uMAX(1), iy, d, WIDTH_IN, HEIGHT_IN)] = DerErr;

@@ -8,10 +8,12 @@
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 namespace sx
 {
-	constexpr auto VERSION_MAJOR = int(6);
+	constexpr auto VERSION_MAJOR = int(7);
 	constexpr auto VERSION_MINOR = int(0);
 	constexpr auto VERSION_PATCH = int(0);
 	constexpr auto ALIGNMENT = int(32);
+
+	using DEF_t = float;
 }
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -32,6 +34,14 @@ namespace sx
 #include <fx/Math.hpp>
 #include <fx/Vops.hpp>
 
+
+#include "./functions/Error.hpp"
+#include "./functions/Transfer.hpp"
+#include "./Optimizer.hpp"
+
+
+
+
 #include "./Samples.hpp"
 
 #include "./Network.hpp"
@@ -39,12 +49,16 @@ namespace sx
 #include "./Layer.hpp"
 
 #include "./layer/Error.hpp"
-#include "./layer/ErrorConv2.hpp"
 
-#include "./layer/Filter.hpp"
+//#include "./layer/Filter.hpp"
 
 #include "./layer/Dense.hpp"
 
 #include "./layer/Downscale2.hpp"
 #include "./layer/Upscale2.hpp"
 #include "./layer/Conv2.hpp"
+#include "./layer/Depth2.hpp"
+#include "./layer/Remap3.hpp"
+
+#include "./utilities/Train.hpp"
+

@@ -36,7 +36,7 @@ namespace sx
 			auto SamplesCount = u64(0);
 			auto SampleSize = u64(0);
 
-			CacheFile.seekg(-(sizeof(u64)*2), CacheFile.end);
+			CacheFile.seekg(-(i64(sizeof(u64)*2)), CacheFile.end);
 			CacheFile.read(reinterpret_cast<char*>(&SamplesCount), sizeof(u64));
 			CacheFile.read(reinterpret_cast<char*>(&SampleSize), sizeof(u64));
 

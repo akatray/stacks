@@ -130,6 +130,8 @@ namespace sx
 						
 						memCopy(LINE_LEN, LineDerTrans, PtrFrontGradient + OffOut);
 						for(auto x = 0; x < LINE_LEN; ++x) LineDerTrans[x] *= FN_TRANS::der(LineOutUn[x]);;
+						//for(auto x = 0; x < LINE_LEN; ++x) LineDerTrans[x] *= std::clamp<T>(FN_TRANS::der(LineOutUn[x]), -1, 1);;
+
 
 						for(auto kr = uMAX(0); kr < SZ_KER_EDGE; ++kr)
 						{ 
@@ -167,7 +169,46 @@ namespace sx
 
 			else
 			{
+				T LineDerTrans[LINE_LEN];
+				auto PtrFrontGradient = this->Front->gradient();
+				auto PtrTrDerSrc = this->OutTemp;
+				if constexpr(!FN_TRANS::RAW) PtrTrDerSrc = this->OutTrans;
 
+				for(auto k = uMAX(0); k < KERNELS; ++k)
+				{ 
+					// For each channel.
+					for(auto d = uMAX(0); d < DEPTH_IN; ++d) { for(auto y = RADIUS; y < (HEIGHT_IN - RADIUS); ++y)
+					{
+						const auto OffKernel = math::index_c(0, d, k, SZ_KER, DEPTH_IN);
+						auto LineKernel = this->Weights + OffKernel;
+						auto LineKernelDlt = this->WeightsDlt + OffKernel;
+
+						const auto OffOut =  math::index_c(RADIUS, y, k, WIDTH_IN, HEIGHT_IN);
+						auto LineOutUn = PtrTrDerSrc + OffOut;
+						
+						memCopy(LINE_LEN, LineDerTrans, PtrFrontGradient + OffOut);
+						for(auto x = 0; x < LINE_LEN; ++x) LineDerTrans[x] *= FN_TRANS::der(LineOutUn[x]);;
+						//for(auto x = 0; x < LINE_LEN; ++x) LineDerTrans[x] *= std::clamp<T>(FN_TRANS::der(LineOutUn[x]), -1, 1);;
+
+
+						for(auto kr = uMAX(0); kr < SZ_KER_EDGE; ++kr)
+						{ 
+							const auto OffIn = math::index_c(0, y - RADIUS + kr, d, WIDTH_IN, HEIGHT_IN);
+							auto LineInput = this->Input + OffIn;
+							auto LineGrad = this->Gradient + OffIn;
+
+							for(auto x = 0; x < LINE_LEN; ++x)
+							{
+								for(auto w = uMAX(0); w < SZ_KER_EDGE; ++w)
+								{
+									const auto IdxKer = math::index_c(w, kr, SZ_KER_EDGE);
+									//LineKernelDlt[IdxKer] += LineInput[x+w] * LineDerTrans[x];
+									LineGrad[x+w] += LineKernel[IdxKer] * LineDerTrans[x];
+								}
+							}
+						}
+					}}
+				}
 			}
 
 			SX_MC_LAYER_NEXT_FIT;

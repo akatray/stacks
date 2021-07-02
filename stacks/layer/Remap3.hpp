@@ -14,37 +14,47 @@ namespace sx
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	using namespace fx;
 
+	enum class AXIS
+	{
+		X,
+		Y,
+		Z
+	};
 
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	// Dense layer.
+	// Convolutional layer 2d.
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	template
 	<
-		int SZ_IN,
-		int SZ_OUT,
-		class FN_TRANS,
-		FnOptim FN_OPTIM = FnOptim::ADAM,
-		class T = DEF_t
+		class T,
+		uMAX WIDTH_IN,
+		uMAX HEIGHT_IN,
+		uMAX DEPTH_IN,
+		AXIS NEW_X,
+		AXIS NEW_Y,
+		AXIS NEW_Z
 	>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-	class Dense :
-		public Layer<T>,
-		Outputs_ld<T, SZ_OUT, SZ_IN, FN_TRANS::RAW>,
-		LDWeights<T, FN_OPTIM, SZ_IN*SZ_OUT, SZ_IN, SZ_OUT, FnInitWeights::DEFAULT>,
-		LDBiases<T, SZ_OUT, SZ_IN, SZ_OUT, FN_OPTIM>
+	class Remap3 :
+		public Layer<T>
+		//LDWeights<T, FnOptim::NONE, 8, 8, FnInitWeights::DEFAULT>,
+		//LDBiases<T, 8, 8, 8, FnOptim::NONE>
 	// --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	{
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Compile time constants.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		constexpr static auto SZ_BUF_W = SZ_OUT * SZ_IN;
-		constexpr static auto SZ_BUF_B = SZ_OUT;
+		constexpr static auto SZ_IN = WIDTH_IN * HEIGHT_IN * DEPTH_IN;
+		constexpr static auto SZ_OUT = SZ_IN;
 		
+
+		alignas(ALIGNMENT) T Output[SZ_OUT];
+		alignas(ALIGNMENT) T Gradient[SZ_IN];
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Generated functions.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		SX_MC_LAYER_TRIVIAL(Dense, SZ_OUT, this->OutTrans, this->Gradient)
+		SX_MC_LAYER_TRIVIAL(Remap3, SZ_OUT, this->Output, this->Gradient)
 
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -52,128 +62,157 @@ namespace sx
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_EXE final
 		{
-			for(auto o = uMAX(0); o < SZ_OUT; ++o)
+			uMAX x = 0;
+			uMAX y = 0;
+			uMAX z = 0;
+
+			uMAX* nx = nullptr;
+			uMAX* ny = nullptr;
+			uMAX* nz = nullptr;
+
+			uMAX szx = 0;
+			uMAX szy = 0;
+			uMAX szz = 0;
+
+
+			if constexpr(NEW_X == AXIS::X){ nx = &x; szx = WIDTH_IN;}
+			if constexpr(NEW_X == AXIS::Y){ nx = &y; szx = HEIGHT_IN;}
+			if constexpr(NEW_X == AXIS::Z){ nx = &z; szx = DEPTH_IN;}
+
+			if constexpr(NEW_Y == AXIS::X){ ny = &x; szy = WIDTH_IN;}
+			if constexpr(NEW_Y == AXIS::Y){ ny = &y; szy = HEIGHT_IN;}
+			if constexpr(NEW_Y == AXIS::Z){ ny = &z; szy = DEPTH_IN;}
+
+			if constexpr(NEW_Z == AXIS::X){ nz = &x; szz = WIDTH_IN;}
+			if constexpr(NEW_Z == AXIS::Y){ nz = &y; szz = HEIGHT_IN;}
+			if constexpr(NEW_Z == AXIS::Z){ nz = &z; szz = DEPTH_IN;}
+
+
+			for(; z < DEPTH_IN; ++z) 
 			{
-				this->OutTrans[o] = std::inner_product(this->Input, this->Input + SZ_IN, this->Weights + math::index_c(0, o, SZ_IN), T(0)) + this->Biases[o];
+				for(; y < HEIGHT_IN; ++y) 
+				{
+					for(; x < WIDTH_IN; ++x)
+					{
+						const auto o = math::index_c(*nx, *ny, *nz, szx, szy);
+						const auto i = math::index_c(x, y, z, WIDTH_IN, HEIGHT_IN);
+				
+						this->Output[o] = this->Input[i];
+
+					}
+
+					x = 0;
+				}
+
+				y = 0;
 			}
+
 
 			SX_MC_LAYER_NEXT_EXE;
 		}
 
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		// Backpropagate.
+		// Backpropagate. Optimized for memory order.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_FIT final
 		{
-			constexpr auto EPSILON = r64(1e-8);
-			
-			memZero(SZ_IN, this->Gradient);
-			
-			//auto OutNeeded = this->OutTrans;
-			//if constexpr(FN_TRANS::RAW) OutNeeded = this->OutRaw;
-			
-			for(auto o = uMAX(0); o < SZ_OUT; ++o)
+			uMAX x = 0;
+			uMAX y = 0;
+			uMAX z = 0;
+
+			uMAX* nx = nullptr;
+			uMAX* ny = nullptr;
+			uMAX* nz = nullptr;
+
+			uMAX szx = 0;
+			uMAX szy = 0;
+			uMAX szz = 0;
+
+
+			if constexpr(NEW_X == AXIS::X){ nx = &x; szx = WIDTH_IN;}
+			if constexpr(NEW_X == AXIS::Y){ nx = &y; szx = HEIGHT_IN;}
+			if constexpr(NEW_X == AXIS::Z){ nx = &z; szx = DEPTH_IN;}
+
+			if constexpr(NEW_Y == AXIS::X){ ny = &x; szy = WIDTH_IN;}
+			if constexpr(NEW_Y == AXIS::Y){ ny = &y; szy = HEIGHT_IN;}
+			if constexpr(NEW_Y == AXIS::Z){ ny = &z; szy = DEPTH_IN;}
+
+			if constexpr(NEW_Z == AXIS::X){ nz = &x; szz = WIDTH_IN;}
+			if constexpr(NEW_Z == AXIS::Y){ nz = &y; szz = HEIGHT_IN;}
+			if constexpr(NEW_Z == AXIS::Z){ nz = &z; szz = DEPTH_IN;}
+
+			auto Gr = this->Front->gradient();
+
+			for(; z < DEPTH_IN; ++z) 
 			{
-				const auto Error = this->Front->gradient()[o];
-				//const auto Result =  this->OutTrans[o];
-				////const auto TH = Result + Error;
-
-				//const auto EP = T(1) - (T(1) / TH * Result);
-				this->BiasesDlt[o] += Error;
-
-
-				for(auto i = uMAX(0); i < SZ_IN; ++i)
+				for(; y < HEIGHT_IN; ++y) 
 				{
-					const auto Input = this->Input[i] + EPSILON;
-					this->WeightsDlt[math::index_c(i, o, SZ_IN)] += Input * Error;
-				}
-			}
-			
-			
-			/*
-			auto OutNeeded = this->OutTrans;
-			if constexpr(FN_TRANS::RAW) OutNeeded = this->OutRaw;
-			
-			if(!this->IsLocked)
-			{
-				for(auto o = uMAX(0); o < SZ_OUT; ++o)
-				{
-					const auto DerErr = this->Front->gradient()[o];
-					const auto DerTrans = std::clamp(FN_TRANS::der(OutNeeded[o]) * DerErr, T(-1), T(1));
+					for(; x < WIDTH_IN; ++x)
+					{
+						const auto o = math::index_c(*nx, *ny, *nz, szx, szy);
+						const auto i = math::index_c(x, y, z, WIDTH_IN, HEIGHT_IN);
+				
+						this->Gradient[i] = Gr[o];
 
-					vops::mulVecByConstAddToOut(SZ_IN, this->Gradient, &this->Weights[math::index_c(0, o, SZ_IN)], DerTrans);
-					vops::mulVecByConstAddToOut(SZ_IN, &this->WeightsDlt[math::index_c(0, o, SZ_IN)], this->Input, DerTrans);
-					//this->BiasesDlt[o] += DerTrans;
+					}
+
+					x = 0;
 				}
+
+				y = 0;
 			}
 
-			else
-			{
-				for(auto o = uMAX(0); o < SZ_OUT; ++o)
-				{
-					const auto DerErr = this->Front->gradient()[o];
-					const auto DerTrans = std::clamp(FN_TRANS::der(OutNeeded[o]) * DerErr, T(-1), T(1));
 
-					vops::mulVecByConstAddToOut(SZ_IN, this->Gradient, &this->Weights[math::index_c(0, o, SZ_IN)], DerTrans);
-				}
-			}
-			*/
-
-			
 			SX_MC_LAYER_NEXT_FIT;
 		}
+
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Get output error in respect to argument.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		#include "./data/ComImplErr.hpp"
 
+
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Reset delta parameters.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplReset.hpp"
+		SX_FNSIG_LAYER_RESET final
+		{
+			SX_MC_LAYER_NEXT_RESET;
+		}
+
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Apply optimizations and update parameters.
+		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		SX_FNSIG_LAYER_APPLY final
 		{
-			for(auto w = uMAX(0); w < SZ_BUF_W; ++w)
-			{
-				//auto NewWeight = this->Weights[w] *  (this->WeightsDlt[w]);
-				//if(NewWeight > 1) NewWeight = 1;
-				//if(NewWeight < -1) NewWeight = -1;
-				//this->Weights[w] = NewWeight;
-
-				this->WeightsDltM[w] = (std::clamp(this->WeightsDlt[w], T(-1), T(1)) * 0.05) + (this->WeightsDltM[w] * 0.95);
-
-				//this->WeightsDltM[w] = (this->WeightsDlt[w] * 0.1) + (this->WeightsDltM[w] * 0.9);
-
-				this->Weights[w] -= this->WeightsDltM[w] * 0.0001;
-			}
-
-			for(auto o = uMAX(0); o < SZ_OUT; ++o)
-			{
-				this->Biases[o] -= this->BiasesDlt[o]* 0.0001;			
-			}
-
-
 			SX_MC_LAYER_NEXT_APPLY;
 		}
+
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Store parameters to stream.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplStore.hpp"
+		SX_FNSIG_LAYER_STORE final
+		{
+			SX_MC_LAYER_NEXT_STORE;
+		}
+
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Load parameters from stream.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplLoad.hpp"
+		SX_FNSIG_LAYER_LOAD final
+		{
+			SX_MC_LAYER_NEXT_LOAD;
+		}
+
 
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 		// Multi threading utility.
 		// ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-		#include "./data/ComImplExchange.hpp"
+		#include "./data/ComImplExchangeSkip.hpp"
 	};
 }

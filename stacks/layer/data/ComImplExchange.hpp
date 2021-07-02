@@ -3,10 +3,13 @@
 		{
 			auto Master = static_cast<decltype(this)>(_Master);
 
-			memCopy(SZ_BUF_W, Master->WeightsDlt, this->WeightsDlt);
-			memCopy(SZ_BUF_B, Master->BiasesDlt, this->BiasesDlt);
-			memCopy(SZ_BUF_W, this->Weights, Master->Weights);
-			memCopy(SZ_BUF_B, this->Biases, Master->Biases);
+			//memCopy(SZ_BUF_W, Master->WeightsDlt, this->WeightsDlt);
+			//memCopy(SZ_BUF_B, Master->BiasesDlt, this->BiasesDlt);
+			//memCopy(SZ_BUF_W, this->Weights, Master->Weights);
+			//memCopy(SZ_BUF_B, this->Biases, Master->Biases);
+
+			memCopy(SZ_BUF_W, Master->Weights, this->Weights);
+
 
 
 			if(this->Front && _Chain) this->Front->exchange(Master->Front);

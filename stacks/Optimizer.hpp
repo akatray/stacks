@@ -83,7 +83,7 @@ namespace sx
 		{
 			for(auto i = uMAX(0); i < _Size; ++i)
 			{
-				_Buff[i] -= _Rate * _BuffD[i];
+				_Buff[i] -= _BuffD[i] * _Rate;
 			}
 		}
 		
